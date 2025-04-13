@@ -7,7 +7,11 @@ authors = [
     { name = "luisteod", email = "luislopesteo@hotmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "inject>=5.2.1",
+    "pika>=1.3.2",
+    "pydantic-settings>=2.8.1",
+]
 
 [project.scripts]
 book-svc = "book_cruises.book_svc:main"

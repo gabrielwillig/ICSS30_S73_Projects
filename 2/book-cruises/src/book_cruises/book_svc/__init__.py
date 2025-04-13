@@ -1,1 +1,1 @@
-from .main import main
+from .book_svc import main
