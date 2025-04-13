@@ -1,0 +1,21 @@
+[project]
+name = "book-cruises"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "luisteod", email = "luislopesteo@hotmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+book-svc = "book_cruises.book_svc:main"
+marketing-svc = "book_cruises.market_svc:main"
+payment-svc = "book_cruises.payment_svc:main"
+ticket-svc = "book_cruises.ticket_svc:main"
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

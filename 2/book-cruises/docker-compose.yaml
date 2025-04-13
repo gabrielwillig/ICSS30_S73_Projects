@@ -1,0 +1,24 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # Porta usada pelos clientes (AMQP)
+      - "15672:15672"  # Porta do painel de administração (Web UI)
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  rabbitmq_data:
+
+# Adicionar restante dos serviços conforme necessário
+  # Exemplo de outro serviço
+  # service_name:
+  #   image: your_image
+  #   ports:
+  #     - "port:port"
+  #   depends_on:
+  #     - rabbitmq
