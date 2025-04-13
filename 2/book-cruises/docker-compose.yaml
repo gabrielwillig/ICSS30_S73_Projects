@@ -11,14 +11,29 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: book-cruises
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 volumes:
   rabbitmq_data:
+  postgres_data:
 
 # Adicionar restante dos serviços conforme necessário
-  # Exemplo de outro serviço
-  # service_name:
-  #   image: your_image
-  #   ports:
-  #     - "port:port"
-  #   depends_on:
-  #     - rabbitmq
+# Exemplo de outro serviço
+# service_name:
+#   image: your_image
+#   ports:
+#     - "port:port"
+#   depends_on:
+#     - rabbitmq
+#     - postgres
