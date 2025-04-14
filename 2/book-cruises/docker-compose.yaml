@@ -2,6 +2,9 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
+    restart: on-failure
+    depends_on:
+      - db_init
     ports:
       - "5672:5672"    # Porta usada pelos clientes (AMQP)
       - "15672:15672"  # Porta do painel de administração (Web UI)
@@ -14,7 +17,7 @@ services:
   postgres:
     image: postgres:15
     container_name: postgres
-    restart: always
+    restart: on-failure
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -23,6 +26,35 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+  
+  db_init:
+    container_name: db_init
+    restart: no
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: db_init
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: 5432
+    command: >
+      sh -c "
+      while ! pg_isready -h ${DB_HOST} -p 5432 -U ${DB_USER}; do
+        echo 'Waiting for PostgreSQL to be ready...';
+        sleep 2;
+      done;
+      python -m src.book_cruises.commons.utils.infra.db_init
+      "
+    volumes:
+      - .:/app
+    working_dir: /app
 
 volumes:
   rabbitmq_data:
