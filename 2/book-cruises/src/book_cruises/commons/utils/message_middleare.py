@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from book_cruises.commons.utils import logger
 from .infra import RabbitMQ
 
-class MessageMidleware:
+class MessageMiddleware:
     def __init__(self, host: str, queue_name: str, username: str, password: str):
         self.rabbitmq = RabbitMQ(host=host, queue_name=queue_name, username=username, password=password)
         self.rabbitmq.initialize()

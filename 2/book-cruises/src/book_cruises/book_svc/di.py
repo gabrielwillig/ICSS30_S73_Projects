@@ -1,8 +1,8 @@
 import inject
-from book_cruises.commons.utils import MessageMidleware, Database, config
+from book_cruises.commons.utils import MessageMiddleware, Database, config
 
 def configure_dependencies(binder: inject.Binder) -> None:
-    msg_middleware = MessageMidleware(
+    msg_middleware = MessageMiddleware(
         host=config.RABBITMQ_HOST,
         queue_name=config.BOOK_SVC_QUEUE,
         username=config.RABBITMQ_USERNAME,
@@ -18,4 +18,4 @@ def configure_dependencies(binder: inject.Binder) -> None:
     )
 
     binder.bind(Database, database)
-    binder.bind(MessageMidleware, msg_middleware)
+    binder.bind(MessageMiddleware, msg_middleware)

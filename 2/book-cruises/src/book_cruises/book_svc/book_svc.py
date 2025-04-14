@@ -1,11 +1,11 @@
 import inject
-from .di import configure_dependencies
-from book_cruises.commons.utils import MessageMidleware, Database, logger, config
+from book_cruises.commons.utils import MessageMiddleware, Database, logger, config
 from book_cruises.commons.domains import Itinerary
+from .di import configure_dependencies
 
 class BookSvc:
     @inject.autoparams()
-    def __init__(self, msg_middleware: MessageMidleware, database: Database):
+    def __init__(self, msg_middleware: MessageMiddleware, database: Database):
         self.msg_middleware = msg_middleware
         self.database = database
         logger.info("Book Service initialized")

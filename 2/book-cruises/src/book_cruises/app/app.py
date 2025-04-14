@@ -2,7 +2,7 @@ import inject
 import json
 import uuid
 from flask import Flask, render_template, request
-from book_cruises.commons.utils import MessageMidleware
+from book_cruises.commons.utils import MessageMiddleware
 from book_cruises.commons.utils import logger
 from book_cruises.commons.utils import config
 from .di import configure_dependencies
@@ -12,13 +12,14 @@ app = Flask(__name__)
 flask_configs = {
     "debug": config.DEBUG,
     "host": config.HOST,
-    "port": config.PORT
+    "port": config.PORT,
+    "user_reloader": config.DEBUG,
 }
 app.config.from_mapping(flask_configs)
 
 # Initialize Middleware
 inject.configure(configure_dependencies)  # Initialize the DI container
-msg_middleware = inject.instance(MessageMidleware)
+msg_middleware = inject.instance(MessageMiddleware)
 
 response_storage = {}  # Store responses temporarily
 

@@ -16,11 +16,11 @@ dependencies = [
 ]
 
 [project.scripts]
-book-svc = "book_cruises.book_svc:main"
-marketing-svc = "book_cruises.market_svc:main"
-payment-svc = "book_cruises.payment_svc:main"
-ticket-svc = "book_cruises.ticket_svc:main"
-app = "book_cruises.app:main"
+book-svc = "book_cruises:book_svc"
+marketing-svc = "book_cruises:market_svc"
+payment-svc = "book_cruises:payment_svc"
+ticket-svc = "book_cruises:ticket_svc"
+app = "book_cruises:app"
 
 
 [build-system]

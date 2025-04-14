@@ -18,7 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: db_init
+    image: book-cruises
     depends_on:
       - postgres
     env_file:
@@ -37,35 +37,76 @@ services:
       done;
       python -m src.book_cruises.commons.utils.infra.db_init
       "
-    volumes:
-      - .:/app
+    # volumes:
+    #   - .:/app
     working_dir: /app
 
-    rabbitmq:
-      image: rabbitmq:3-management
-      container_name: rabbitmq
-      restart: on-failure
-      depends_on:
-        - db_init
-      ports:
-        - "5672:5672"    # Porta usada pelos clientes (AMQP)
-        - "15672:15672"  # Porta do painel de administração (Web UI)
-      environment:
-        RABBITMQ_DEFAULT_USER: user
-        RABBITMQ_DEFAULT_PASS: password
-      volumes:
-        - rabbitmq_data:/var/lib/rabbitmq
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: on-failure
+    depends_on:
+      - db_init
+    ports:
+      - "5672:5672"    # Porta usada pelos clientes (AMQP)
+      - "15672:15672"  # Porta do painel de administração (Web UI)
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  app:
+    container_name: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      - rabbitmq
+    ports:
+      - "5000:5000"  # Porta para acessar o front-end
+    environment:
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      # TODO: Add var for queues
+    command: >
+      sh -c "
+      uv run app
+      "
+    # volumes:
+    #   - .:/app
+    working_dir: /app
+  
+  book_svc:
+    container_name: book_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      - rabbitmq
+      - postgres
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    command: >
+      sh -c "
+      uv run book-svc
+      "
+    # volumes:
+    #   - .:/app
+    working_dir: /app
 
 volumes:
   rabbitmq_data:
   postgres_data:
-
-# Adicionar restante dos serviços conforme necessário
-# Exemplo de outro serviço
-# service_name:
-#   image: your_image
-#   ports:
-#     - "port:port"
-#   depends_on:
-#     - rabbitmq
-#     - postgres
