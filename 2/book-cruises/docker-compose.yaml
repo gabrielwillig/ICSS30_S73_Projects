@@ -1,19 +1,4 @@
 services:
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    restart: on-failure
-    depends_on:
-      - db_init
-    ports:
-      - "5672:5672"    # Porta usada pelos clientes (AMQP)
-      - "15672:15672"  # Porta do painel de administração (Web UI)
-    environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-
   postgres:
     image: postgres:15
     container_name: postgres
@@ -55,6 +40,21 @@ services:
     volumes:
       - .:/app
     working_dir: /app
+
+    rabbitmq:
+      image: rabbitmq:3-management
+      container_name: rabbitmq
+      restart: on-failure
+      depends_on:
+        - db_init
+      ports:
+        - "5672:5672"    # Porta usada pelos clientes (AMQP)
+        - "15672:15672"  # Porta do painel de administração (Web UI)
+      environment:
+        RABBITMQ_DEFAULT_USER: user
+        RABBITMQ_DEFAULT_PASS: password
+      volumes:
+        - rabbitmq_data:/var/lib/rabbitmq
 
 volumes:
   rabbitmq_data:

@@ -14,6 +14,11 @@ class Config(BaseSettings):
     DB_PASSWORD: str = "password"
     DB_PORT: int = 5432
 
+    # App Configuration
+    HOST: str = "0.0.0.0"
+    PORT: int = 5000
+    DEBUG: bool = True
+
     class Config:
         env_file = ".env"  # Load environment variables from a .env file if present
 
