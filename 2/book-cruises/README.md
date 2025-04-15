@@ -4,7 +4,7 @@
 
 ### 1. Subir o Ambiente Completo
 
-Para iniciar o RabbitMQ, PostgreSQL e o serviço de inicialização do banco de dados (`db_init`):
+Para iniciar o RabbitMQ, PostgreSQL e os serviços do projeto:
 
 ```bash
 docker compose up -d
@@ -23,6 +23,13 @@ docker compose up -d
 
 - **Serviço de Inicialização (`db_init`)**:
   - Este serviço cria as tabelas necessárias e insere dados iniciais no banco de dados, caso ainda não existam.
+
+- **Serviço `book_svc`**:
+  - Responsável por processar itinerários e consumir mensagens do RabbitMQ.
+
+- **Aplicação Web (`app`)**:
+  - Interface para consultar itinerários de cruzeiros.
+  - Acesse em: [http://localhost:5000](http://localhost:5000)
 
 ---
 
@@ -55,7 +62,7 @@ uv run <nome-do-microservico>
 Exemplo:
 
 ```bash
-uv run book-cruises
+uv run book-svc
 ```
 
 ---
@@ -102,8 +109,14 @@ Após subir o ambiente, você pode verificar o banco de dados PostgreSQL:
 - **`src/book_cruises/commons/utils/infra/db_init.py`**:
   - Script responsável por criar as tabelas e inserir dados iniciais no banco de dados.
 
+- **`src/book_cruises/book_svc/book_svc.py`**:
+  - Serviço responsável por consumir mensagens do RabbitMQ e processar itinerários.
+
+- **`src/book_cruises/app/app.py`**:
+  - Aplicação web para consultar itinerários de cruzeiros.
+
 - **`docker-compose.yaml`**:
-  - Define os serviços do RabbitMQ, PostgreSQL e o inicializador do banco de dados (`db_init`).
+  - Define os serviços do RabbitMQ, PostgreSQL, `book_svc`, `app` e o inicializador do banco de dados (`db_init`).
 
 - **`Dockerfile`**:
   - Configura o ambiente para os microserviços.
@@ -126,6 +139,15 @@ Após subir o ambiente, você pode verificar o banco de dados PostgreSQL:
 
 - Executa o script `db_init.py` para criar tabelas e inserir dados iniciais.
 - Este serviço é executado automaticamente ao subir o ambiente.
+
+### Serviço `book_svc`
+
+- Processa itinerários e consome mensagens do RabbitMQ.
+
+### Aplicação Web (`app`)
+
+- Interface para consultar itinerários de cruzeiros.
+- Acesse em: [http://localhost:5000](http://localhost:5000)
 
 ---
 
@@ -152,7 +174,7 @@ docker logs <nome-do-servico>
 Exemplo:
 
 ```bash
-docker logs db_init
+docker logs book_svc
 ```
 
 ### Acessar o Banco de Dados
@@ -191,6 +213,20 @@ Se necessário, execute o script manualmente:
 
 ```bash
 docker exec -it db_init python src/book_cruises/commons/utils/infra/db_init.py
+```
+
+### RabbitMQ não está acessível
+
+Certifique-se de que o serviço `rabbitmq` está em execução:
+
+```bash
+docker ps
+```
+
+Se o serviço não estiver rodando, reinicie o ambiente:
+
+```bash
+docker compose up -d
 ```
 
 ---

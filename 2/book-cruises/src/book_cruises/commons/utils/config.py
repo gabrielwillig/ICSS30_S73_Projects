@@ -21,6 +21,7 @@ class Config(BaseSettings):
 
     class Config:
         env_file = ".env"  # Load environment variables from a .env file if present
+        env_file_encoding = "utf-8"
 
 # Create a single instance of the configuration
 config = Config()

@@ -24,6 +24,7 @@ class RabbitMQ:
             logger.info(f"RabbitMQ initialized with queue: {self.queue_name}")
         except Exception as e:
             logger.error(f"Failed to initialize RabbitMQ: {e}")
+            raise e
 
     def publish_message(self, message: str):
         try:
@@ -41,6 +42,7 @@ class RabbitMQ:
             logger.info(f"Message published to queue {self.queue_name}: {message}")
         except Exception as e:
             logger.error(f"Failed to publish message: {e}")
+            raise e
 
     def consume_messages(self, callback):
         try:
@@ -54,6 +56,7 @@ class RabbitMQ:
             self.channel.start_consuming()
         except Exception as e:
             logger.error(f"Failed to consume messages: {e}")
+            raise e
 
     def close_connection(self):
         if self.connection:

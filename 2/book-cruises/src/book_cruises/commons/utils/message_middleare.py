@@ -47,7 +47,7 @@ class MessageMiddleware:
                 self.rabbitmq.consume_messages(self.__process_message)
                 # If consume_messages returns (it shouldn't unless stopped), reset retries
                 retry_count = 0
-            except ConnectionError as e:
+            except Exception as e:
                 retry_count += 1
                 if retry_count > self.max_retries:
                     logger.error(f"Max retries ({self.max_retries}) exceeded. Giving up.")
@@ -64,10 +64,10 @@ class MessageMiddleware:
                     f"Retrying in {backoff} seconds. Error: {str(e)}"
                 )
                 time.sleep(backoff)
-            except Exception as e:
-                # Handle other unexpected errors
-                logger.error(f"Unexpected error in message consumption: {str(e)}")
-                raise
+                
+                # Reinitialize the RabbitMQ connection
+                self.initialize()
+
     
     def __process_message(self, channel, method, properties, body):
         try:
