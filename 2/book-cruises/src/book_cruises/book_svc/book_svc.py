@@ -1,6 +1,5 @@
-import time
 import inject
-from book_cruises.commons.utils import MessageMiddleware, Database, logger, config
+from book_cruises.commons.utils import MessageMiddleware, Database, logger
 from book_cruises.commons.domains import Itinerary
 from .di import initialize_dependencies
 
@@ -24,7 +23,7 @@ class BookSvc:
 def main(): 
     # Initialize dependencies
     initialize_dependencies()
-    
+
     book_svc = BookSvc()
     book_svc.run()
         

@@ -15,8 +15,25 @@ class MessageMiddleware:
     
     def initialize(self):
         # Initialize the RabbitMQ connection
-        self.rabbitmq.initialize()
-    
+        retry_count = 0
+        while retry_count < self.max_retries:
+            try:
+                self.rabbitmq.initialize()
+                break
+            except Exception as e:
+                retry_count += 1
+                backoff = min(
+                    self.initial_backoff * (self.backoff_multiplier ** (retry_count - 1)),
+                    self.max_backoff
+                )
+                logger.error(f"Failed to initialize RabbitMQ (attempt {retry_count}/{self.max_retries}): {str(e)}")
+                logger.warning(f"Retrying in {backoff} seconds...")
+                time.sleep(backoff)
+            finally:
+                if retry_count == self.max_retries:
+                    logger.error("Max retries reached. Exiting.")
+                    raise e
+
     def publish_message(self, message: str):
         self.rabbitmq.publish_message(message)
     
