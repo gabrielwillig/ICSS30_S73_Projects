@@ -11,6 +11,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
   
   db_init:
     container_name: db_init
@@ -24,14 +26,14 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: ${DB_HOST}
+      DB_HOST: postgres
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_PORT: 5432
     command: >
       sh -c "
-      while ! pg_isready -h ${DB_HOST} -p 5432 -U ${DB_USER}; do
+      while ! pg_isready -h postgres -p 5432 -U ${DB_USER}; do
         echo 'Waiting for PostgreSQL to be ready...';
         sleep 2;
       done;
@@ -40,6 +42,8 @@ services:
     # volumes:
     #   - .:/app
     working_dir: /app
+    networks:
+      - default
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -55,6 +59,8 @@ services:
       RABBITMQ_DEFAULT_PASS: password
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - default
 
   # app:
   #   container_name: app
@@ -79,6 +85,8 @@ services:
   #   # volumes:
   #   #   - .:/app
   #   working_dir: /app
+  #   networks:
+  #     - default
   
   # book_svc:
   #   container_name: book_svc
@@ -106,6 +114,12 @@ services:
   #   # volumes:
   #   #   - .:/app
   #   working_dir: /app
+  #   networks:
+  #     - default
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
   rabbitmq_data:
