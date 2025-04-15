@@ -24,6 +24,7 @@ class Postgres:
             logger.info(f"PostgreSQL initialized with database: {self.database}")
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL: {e}")
+            raise e
 
     def execute_query(self, query: str, params=None):
         try:
