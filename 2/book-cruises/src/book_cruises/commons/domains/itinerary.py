@@ -1,5 +1,5 @@
 from typing import Annotated, Optional, Union
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pydantic import BaseModel, Field, AfterValidator
 from book_cruises.commons.utils import logger
 from .itinerary_dto import ItineraryDTO
@@ -13,7 +13,7 @@ class Itinerary(BaseModel):
     ship: Optional[FormattedStr] = Field(None, description="Name of the ship")
     departure_date: date = Field(description="Departure date")
     departure_harbor: FormattedStr = Field(description="Departure harbor")
-    departure_time: datetime = Field(description="Departure time")
+    departure_time: time = Field(description="Departure time")
     arrival_harbor: FormattedStr = Field(description="Arrival harbor")
     arrival_date: date = Field(description="Arrival date")
     visiting_harbors: FormattedList = Field(

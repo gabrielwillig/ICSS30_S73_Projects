@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import List, Optional, Union
 
 
@@ -8,7 +8,7 @@ class ItineraryDTO(BaseModel):
     ship: Optional[str] = Field(None, description="Name of the ship")
     departure_harbor: str = Field(description="Departure harbor")
     departure_date: Union[date, str] = Field(description="Departure date")
-    departure_time: Optional[Union[datetime, str]] = Field(None, description="Departure time")
+    departure_time: Optional[Union[time, str]] = Field(None, description="Departure time")
     arrival_harbor: str = Field(description="Arrival harbor")
     arrival_date: Optional[Union[date, str]] = Field(None, description="Arrival date")
     visiting_harbors: Optional[List[str]] = Field(
@@ -22,7 +22,7 @@ class ItineraryDTO(BaseModel):
         if isinstance(value, str):
             try:
                 if field == "departure_time":
-                    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").time()
                 else:
                     return datetime.strptime(value, "%Y-%m-%d").date()
             except ValueError:
