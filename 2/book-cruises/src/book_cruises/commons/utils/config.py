@@ -3,9 +3,12 @@ from pydantic_settings import BaseSettings
 class Config(BaseSettings):
     # RabbitMQ Configuration
     RABBITMQ_HOST: str = "localhost"  
-    BOOK_SVC_QUEUE: str = "book_svc_queue"  
     RABBITMQ_USERNAME: str = "user"  
     RABBITMQ_PASSWORD: str = "password"  
+
+    # RabbitMQ Queues
+    BOOK_SVC_RESPONSE_QUEUE: str = "book_svc_response_queue"
+    BOOK_SVC_QUEUE: str = "book_svc_queue"  
 
     # PostgreSQL Configuration
     DB_HOST: str = "localhost"

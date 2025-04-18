@@ -28,20 +28,26 @@ class RabbitMQ:
             logger.error(f"Failed to initialize RabbitMQ: {e}")
             raise e
 
-    def publish_message(self, message: str):
+    def publish_message(self, queue_name:str, message: str, properties: dict = None):
         try:
             if not self.__channel:
                 logger.error("RabbitMQ channel is not initialized.")
                 return
+            
+            # Add correlation_id to message properties
+            basic_properties = pika.BasicProperties(
+                delivery_mode=2,  # Make message persistent
+                correlation_id=properties.get("correlation_id") if properties else None
+            )
 
             # Publish a message to the queue
             self.__channel.basic_publish(
                 exchange="",
-                routing_key=self.queue_name,
+                routing_key=queue_name,
                 body=message,
-                properties=pika.BasicProperties(delivery_mode=2),  # Make message persistent
+                properties=basic_properties
             )
-            logger.info(f"Message published to queue {self.queue_name}: {message}")
+            logger.info(f"Message published to queue {queue_name}: {message}")
         except Exception as e:
             logger.error(f"Failed to publish message: {e}")
             raise e

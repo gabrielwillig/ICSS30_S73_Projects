@@ -37,8 +37,8 @@ class MessageMiddleware:
                     logger.error("Max retries reached. Exiting.")
                     raise e
 
-    def publish_message(self, message: str):
-        self.__rabbitmq.publish_message(message)
+    def publish_message(self, queue_name: str, message: str, properties: dict = None):
+        self.__rabbitmq.publish_message(queue_name, message, properties)
 
     def consume_messages(self, queue_callbacks: dict[str, Callable]):
         wrapped_callbacks = {
@@ -84,7 +84,7 @@ class MessageMiddleware:
 
                 # Call the original callback
                 with ThreadPoolExecutor() as executor:
-                    future = executor.submit(callback, message)
+                    future = executor.submit(callback, message, properties)
                     result = future.result()
             except Exception as e:
                 logger.error(f"Failed to process message: {e}")

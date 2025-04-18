@@ -8,6 +8,42 @@
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #0056b3;
+        }
+        form {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        form input, form select, form button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        form button {
+            background-color: #0056b3;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        form button:hover {
+            background-color: #003d80;
         }
         table {
             width: 100%;
@@ -15,20 +51,51 @@
             margin-top: 20px;
         }
         table, th, td {
-            border: 1px solid black;
+            border: 1px solid #ddd;
         }
         th, td {
             padding: 10px;
             text-align: left;
+        }
+        th {
+            background-color: #0056b3;
+            color: white;
+        }
+        .no-results {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 18px;
+            color: #666;
         }
     </style>
 </head>
 <body>
     <h1>Book Cruises</h1>
     <form method="POST">
-        <label for="destination">Destination:</label>
-        <input type="text" id="destination" name="destination" placeholder="Enter destination">
-        <button type="submit">Search</button>
+        <label for="departure_date">Departure Date:</label>
+        <input type="date" id="departure_date" name="departure_date" value="2026-01-01" required>
+
+        <label for="departure_harbor">Departure Harbor:</label>
+        <select id="departure_harbor" name="departure_harbor" required>
+            <option value="" disabled>Select a harbor</option>
+            <option value="Miami">Miami</option>
+            <option value="Nassau">Nassau</option>
+            <option value="San Juan" selected>San Juan</option>
+            <option value="Kingston">Kingston</option>
+            <option value="Havana">Havana</option>
+        </select>
+
+        <label for="arrival_harbor">Arrival Harbor:</label>
+        <select id="arrival_harbor" name="arrival_harbor" required>
+            <option value="" disabled>Select a harbor</option>
+            <option value="Miami" selected>Miami</option>
+            <option value="Nassau">Nassau</option>
+            <option value="San Juan">San Juan</option>
+            <option value="Kingston">Kingston</option>
+            <option value="Havana">Havana</option>
+        </select>
+
+        <button type="submit">Search Cruises</button>
     </form>
 
     {% if trips %}
@@ -37,24 +104,28 @@
         <thead>
             <tr>
                 <th>ID</th>
-                <th>Destination</th>
-                <th>Date</th>
-                <th>Harbor</th>
+                <th>Ship</th>
+                <th>Departure Date</th>
+                <th>Departure Harbor</th>
+                <th>Arrival Harbor</th>
+                <th>Price</th>
             </tr>
         </thead>
         <tbody>
             {% for trip in trips %}
             <tr>
                 <td>{{ trip.id }}</td>
-                <td>{{ trip.destination }}</td>
-                <td>{{ trip.date }}</td>
-                <td>{{ trip.harbor }}</td>
+                <td>{{ trip.ship }}</td>
+                <td>{{ trip.departure_date }}</td>
+                <td>{{ trip.departure_harbor }}</td>
+                <td>{{ trip.arrival_harbor }}</td>
+                <td>${{ trip.price }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p>No trips found.</p>
+    <p class="no-results">No trips found. Please try a different search.</p>
     {% endif %}
 </body>
 </html>
