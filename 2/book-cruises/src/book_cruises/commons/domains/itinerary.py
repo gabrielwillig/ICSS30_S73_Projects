@@ -15,7 +15,7 @@ class Itinerary(BaseModel):
     departure_harbor: FormattedStr = Field(description="Departure harbor")
     departure_time: datetime = Field(description="Departure time")
     arrival_harbor: FormattedStr = Field(description="Arrival harbor")
-    arrival_time: datetime = Field(description="Arrival time")
+    arrival_date: date = Field(description="Arrival date")
     visiting_harbors: FormattedList = Field(
         default_factory=list, description="List of visiting harbors"
     )

@@ -1,8 +1,8 @@
 import inject
 from book_cruises.commons.utils import MessageMiddleware, Database, logger
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
+from book_cruises.commons.repositories import ItineraryRepository
 from .di import initialize_dependencies
-from book_cruises.commons.repositories.itinerary_repository import ItineraryRepository
 
 class BookSvc:
     @inject.autoparams()

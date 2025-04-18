@@ -10,7 +10,7 @@ class ItineraryDTO(BaseModel):
     departure_date: Union[date, str] = Field(description="Departure date")
     departure_time: Optional[Union[datetime, str]] = Field(None, description="Departure time")
     arrival_harbor: str = Field(description="Arrival harbor")
-    arrival_date: Optional[Union[datetime, str]] = Field(None, description="Arrival date")
+    arrival_date: Optional[Union[date, str]] = Field(None, description="Arrival date")
     visiting_harbors: Optional[List[str]] = Field(
         default_factory=list, description="List of visiting harbors"
     )
