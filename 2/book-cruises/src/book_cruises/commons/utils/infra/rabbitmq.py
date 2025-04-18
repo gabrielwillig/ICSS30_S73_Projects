@@ -1,64 +1,69 @@
 import pika
 from book_cruises.commons.utils import logger
 
+
 class RabbitMQ:
-    def __init__(self, host="localhost", queue_name="default_queue", username="guest", password="guest"):
-        self.host = host
-        self.queue_name = queue_name
-        self.username = username
-        self.password = password
-        self.connection = None
-        self.channel = None
+    def __init__(self, host: str, username: str, password: str, queues: list[str]):
+        self.__host = host
+        self.__queues = queues
+        self.__username = username
+        self.__password = password
+        self.__connection = None
+        self.__channel = None
 
     def initialize(self):
         try:
-            credentials = pika.PlainCredentials(username=self.username, password=self.password)
-            parameters = pika.ConnectionParameters(host=self.host, credentials=credentials)
+            credentials = pika.PlainCredentials(username=self.__username, password=self.__password)
+            parameters = pika.ConnectionParameters(host=self.__host, credentials=credentials)
 
             # Establish connection to RabbitMQ
-            self.connection = pika.BlockingConnection(parameters)
-            self.channel = self.connection.channel()
+            self.__connection = pika.BlockingConnection(parameters)
+            self.__channel = self.__connection.channel()
 
-            # Declare a queue
-            self.channel.queue_declare(queue=self.queue_name, durable=True)
-            logger.info(f"RabbitMQ initialized with queue: {self.queue_name}")
+            # Declare all queues
+            for queue in self.__queues:
+                self.__channel.queue_declare(queue=queue)
+                logger.info(f"RabbitMQ initialized with queue: {queue}")
         except Exception as e:
             logger.error(f"Failed to initialize RabbitMQ: {e}")
             raise e
 
     def publish_message(self, message: str):
         try:
-            if not self.channel:
+            if not self.__channel:
                 logger.error("RabbitMQ channel is not initialized.")
                 return
 
             # Publish a message to the queue
-            self.channel.basic_publish(
+            self.__channel.basic_publish(
                 exchange="",
                 routing_key=self.queue_name,
                 body=message,
-                properties=pika.BasicProperties(delivery_mode=2)  # Make message persistent
+                properties=pika.BasicProperties(delivery_mode=2),  # Make message persistent
             )
             logger.info(f"Message published to queue {self.queue_name}: {message}")
         except Exception as e:
             logger.error(f"Failed to publish message: {e}")
             raise e
 
-    def consume_messages(self, callback):
+    def consume_messages(self, queue_callbacks: dict[str, callable]):
         try:
-            if not self.channel:
+            if not self.__channel:
                 logger.error("RabbitMQ channel is not initialized.")
                 return
 
-            # Start consuming messages
-            self.channel.basic_consume(queue=self.queue_name, on_message_callback=callback)
-            logger.info("Started consuming messages.")
-            self.channel.start_consuming()
+            # Start consuming messages for each queue with its respective callback
+            for queue, callback in queue_callbacks.items():
+                if queue not in self.__queues:
+                    raise ValueError(f"Queue {queue} is not declared.")
+                self.__channel.basic_consume(queue=queue, on_message_callback=callback, auto_ack=True)
+                logger.info("Set callback for queue: %s", queue)
+            self.__channel.start_consuming()
         except Exception as e:
             logger.error(f"Failed to consume messages: {e}")
             raise e
 
     def close_connection(self):
-        if self.connection:
-            self.connection.close()
+        if self.__connection:
+            self.__connection.close()
             logger.info("RabbitMQ connection closed.")

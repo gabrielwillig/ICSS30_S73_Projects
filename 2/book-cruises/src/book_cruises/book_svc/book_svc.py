@@ -1,4 +1,5 @@
 import inject
+from book_cruises.commons.utils import config
 from book_cruises.commons.utils import MessageMiddleware, Database, logger
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
 from book_cruises.commons.domains.repositories import ItineraryRepository
@@ -9,6 +10,10 @@ class BookSvc:
     def __init__(self, msg_middleware: MessageMiddleware, database: Database):
         self.__msg_middleware: MessageMiddleware = msg_middleware
         self.__repository = ItineraryRepository(database)
+
+        self.__queue_callbacks = {
+            config.BOOK_SVC_QUEUE: self.__process_itinerary,
+        }
     
     def __process_itinerary(self, itinerary_data: str) -> None:
         try:
@@ -22,7 +27,7 @@ class BookSvc:
     
     def run(self):
         logger.info("Book Service initialized")
-        self.__msg_middleware.consume_messages(self.__process_itinerary)
+        self.__msg_middleware.consume_messages(self.__queue_callbacks)
 
 def main() -> None: 
     initialize_dependencies()
