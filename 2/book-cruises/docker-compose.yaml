@@ -37,7 +37,7 @@ services:
         echo 'Waiting for PostgreSQL to be ready...';
         sleep 2;
       done;
-      uv run -m src.book_cruises.commons.utils.infra.db_init
+      uv run -m src.book_cruises.commons.utils.infra.db_init;
       "
     # volumes:
     #   - .:/app
