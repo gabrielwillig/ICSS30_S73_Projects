@@ -1,32 +1,35 @@
 import inject
 from book_cruises.commons.utils import MessageMiddleware, Database, logger
-from book_cruises.commons.domains import Itinerary
+from book_cruises.commons.domains import Itinerary, ItineraryDTO
 from .di import initialize_dependencies
+from book_cruises.commons.repositories.itinerary_repository import ItineraryRepository
 
 class BookSvc:
     @inject.autoparams()
     def __init__(self, msg_middleware: MessageMiddleware, database: Database):
-        self.msg_middleware = msg_middleware
-        self.database = database
-        logger.info("Book Service initialized")
+        self.__msg_middleware: MessageMiddleware = msg_middleware
+        self.__repository = ItineraryRepository(database)
     
-    def process_itinerary(self, itinerary_data: str):
+    def __process_itinerary(self, itinerary_data: str) -> None:
         try:
-            # Create an Itinerary object
-            itinerary_data = Itinerary.from_json_string(itinerary_data)
+            itinerary_dto = ItineraryDTO.parse_raw(itinerary_data)
+            logger.info(f"Received itinerary query: {itinerary_dto}")
+
+            itineraries = self.__repository.get_itineraries(itinerary_dto)
+            print(f"Available itineraries: {itineraries}")
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
     
     def run(self):
-        self.msg_middleware.consume_messages(self.process_itinerary)
+        logger.info("Book Service initialized")
+        self.__msg_middleware.consume_messages(self.__process_itinerary)
 
-def main(): 
-    # Initialize dependencies
+def main() -> None: 
     initialize_dependencies()
 
     book_svc = BookSvc()
     book_svc.run()
-        
-        
+
+
 
 

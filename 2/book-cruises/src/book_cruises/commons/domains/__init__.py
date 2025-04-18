@@ -1,1 +1,1 @@
-from .itinerary import Itinerary
+from .itinerary import Itinerary, ItineraryDTO
