@@ -28,7 +28,7 @@ class ItineraryRepository:
                 departure_harbor=row["departure_harbor"],
                 departure_time=row["departure_time"],
                 arrival_harbor=row["arrival_harbor"],
-                arrival_time=row["arrival_time"],
+                arrival_date=row["arrival_date"],
                 visiting_harbors=row["visiting_harbors"],
                 number_of_days=row["number_of_days"],
                 price=row["price"]

@@ -32,13 +32,14 @@ class Postgres:
                 cursor.execute(query, params)
                 if query.strip().lower().startswith("select"):
                     result = cursor.fetchall()
+                    logger.debug(f"Query executed successfully: {query}")
+                    logger.debug(f"Rowcount: {cursor.rowcount} rows")
                     return result
                 self.connection.commit()
         except Exception as e:
             logger.error(f"Failed to execute query: {e}")
             self.connection.rollback()
             raise e
-        logger.info("Query executed successfully.")
     
     def execute_many(self, query: str, data: list):
         try:
