@@ -1,7 +1,7 @@
 import inject
 from book_cruises.commons.utils import MessageMiddleware, Database, logger
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
-from book_cruises.commons.repositories import ItineraryRepository
+from book_cruises.commons.domains.repositories import ItineraryRepository
 from .di import initialize_dependencies
 
 class BookSvc:
