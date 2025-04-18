@@ -19,6 +19,9 @@ class Config(BaseSettings):
     PORT: int = 5000
     DEBUG: bool = True
 
+    # Logging Configuration
+    LOG_LEVEL: str = "DEBUG" if DEBUG else "INFO"  # Set to DEBUG if DEBUG is True, otherwise INFO
+
     class Config:
         env_file = ".env"  # Load environment variables from a .env file if present
         env_file_encoding = "utf-8"

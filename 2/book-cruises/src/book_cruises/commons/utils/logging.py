@@ -1,15 +1,17 @@
 import logging
 import traceback
+from .config import config
 
 # ANSI escape codes for colors
 RESET = "\033[0m"
 GREEN = "\033[32m"
 RED = "\033[31m"
 YELLOW = "\033[33m"
+BLUE = "\033[34m"
 
 # Create a logger
 logger = logging.getLogger("book_cruises")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(config.LOG_LEVEL)  # Set the log level from the config
 
 # Custom formatter to add colors
 class ColorFormatter(logging.Formatter):
@@ -18,7 +20,9 @@ class ColorFormatter(logging.Formatter):
         formatted_message = super().format(record)
 
         # Check for log level and apply colors
-        if record.levelno == logging.INFO:
+        if record.levelno == logging.DEBUG:
+            return f"{BLUE}{formatted_message}{RESET}"
+        elif record.levelno == logging.INFO:
             return f"{GREEN}{formatted_message}{RESET}"
         elif record.levelno == logging.WARNING:
             return f"{YELLOW}{formatted_message}{RESET}"
@@ -35,7 +39,6 @@ formatter = ColorFormatter("%(asctime)s - %(levelname)s - %(filename)s:%(lineno)
 
 # Create a console handler
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(formatter)
 
 # Add handlers to the logger
