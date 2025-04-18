@@ -37,6 +37,19 @@ class Postgres:
         except Exception as e:
             logger.error(f"Failed to execute query: {e}")
             self.connection.rollback()
+            raise e
+        logger.info("Query executed successfully.")
+    
+    def execute_many(self, query: str, data: list):
+        try:
+            with self.connection.cursor() as cursor:
+                psycopg2.extras.execute_values(cursor, query, data)
+                self.connection.commit()
+        except Exception as e:
+            logger.error(f"Failed to execute many queries: {e}")
+            self.connection.rollback()
+            raise e
+        logger.info("Data inserted successfully.")
 
     def close_connection(self):
         if self.connection:
