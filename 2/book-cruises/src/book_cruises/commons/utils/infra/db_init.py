@@ -3,6 +3,7 @@ from book_cruises.commons.utils import config, logger
 from datetime import datetime, timedelta
 import random
 
+
 def generate_dummy_data():
     # Generate dummy data for the itineraries table
     ships = ["Oceanic Voyager", "Caribbean Explorer", "Bahamas Dream", "Atlantic Star"]
@@ -11,22 +12,33 @@ def generate_dummy_data():
 
     for _ in range(100):
         ship = random.choice(ships)
-        departure_date = datetime.now() + timedelta(days=random.randint(1, 365))
+        departure_date = datetime.now().date() + timedelta(days=random.randint(1, 365))
+        departure_time = (
+            datetime.min + timedelta(hours=random.randint(0, 23), minutes=random.randint(0, 59))
+        ).time()
         departure_harbor = random.choice(harbors)
         arrival_harbor = random.choice([h for h in harbors if h != departure_harbor])
         arrival_date = departure_date + timedelta(days=random.randint(1, 10))
-        arrival_time = (datetime.min + timedelta(hours=random.randint(0, 23), minutes=random.randint(0, 59))).time()
         visiting_harbors = random.sample(harbors, random.randint(1, len(harbors) - 1))
         number_of_days = (arrival_date - departure_date).days
         price = round(random.uniform(500, 5000), 2)
 
-        dummy_data.append((
-            ship, departure_date.date(), departure_harbor, 
-            arrival_harbor, arrival_date.date(), arrival_time, 
-            visiting_harbors, number_of_days, price
-        ))
+        dummy_data.append(
+            (
+                ship,
+                departure_date,
+                departure_time,
+                departure_harbor,
+                arrival_harbor,
+                arrival_date,
+                visiting_harbors,
+                number_of_days,
+                price,
+            )
+        )
 
     return dummy_data
+
 
 def initialize_itineraries_table(postgres: Postgres):
     # Create the itineraries table if it doesn't exist
@@ -58,8 +70,8 @@ def initialize_itineraries_table(postgres: Postgres):
         # Insert dummy data into the database
         insert_data_query = """
         INSERT INTO itineraries (
-            ship, departure_date, departure_harbor, 
-            arrival_harbor, arrival_date, arrival_time, 
+            ship, departure_date, departure_time, departure_harbor, 
+            arrival_harbor, arrival_date, 
             visiting_harbors, number_of_days, price
         ) VALUES %s;
         """
@@ -75,13 +87,14 @@ def initialize_database():
         database=config.DB_NAME,
         user=config.DB_USER,
         password=config.DB_PASSWORD,
-        port=config.DB_PORT
+        port=config.DB_PORT,
     )
     postgres.initialize()
 
     # Initialize each table
     initialize_itineraries_table(postgres)
     postgres.close_connection()
+
 
 if __name__ == "__main__":
     initialize_database()
