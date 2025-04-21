@@ -109,6 +109,7 @@
                 <th>Departure Harbor</th>
                 <th>Arrival Harbor</th>
                 <th>Price</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
@@ -120,6 +121,15 @@
                 <td>{{ trip.departure_harbor }}</td>
                 <td>{{ trip.arrival_harbor }}</td>
                 <td>${{ trip.price }}</td>
+                <td>
+                    <form action="/payment" method="POST" style="margin: 0;">
+                        <input type="hidden" name="trip_id" value="{{ trip.id }}">
+                        <input type="hidden" name="price" value="{{ trip.price }}">
+                        <button type="submit" style="background-color: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
+                            Buy Now
+                        </button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
