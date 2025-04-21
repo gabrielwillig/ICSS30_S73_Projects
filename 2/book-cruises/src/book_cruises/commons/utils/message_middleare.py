@@ -40,6 +40,13 @@ class MessageMiddleware:
     def publish_message(self, queue_name: str, message: str, properties: dict = None):
         self.__rabbitmq.publish_message(queue_name, message, properties)
 
+    def create_temporary_queue(self, queue_name: str) -> str:
+        try:
+            return self.__rabbitmq.declare_exclusive_queue(queue_name)
+        except Exception as e:
+            logger.error(f"Failed to create temporary queue {queue_name}: {e}")
+            raise e
+        
     def consume_messages(self, queue_callbacks: dict[str, Callable]):
         wrapped_callbacks = {
             queue: self.__wrap_callback(callback) for queue, callback in queue_callbacks.items()
@@ -50,6 +57,7 @@ class MessageMiddleware:
             try:
                 # Try to consume messages
                 self.__rabbitmq.consume_messages(wrapped_callbacks)
+                break  # Exit the loop if successful
                 retry_count = 0
             except Exception as e:
                 retry_count += 1
@@ -71,6 +79,13 @@ class MessageMiddleware:
 
                 # Reinitialize the RabbitMQ connection
                 self.initialize()
+    
+    def start_consuming(self):
+        try:
+            self.__rabbitmq.start_consuming()
+        except Exception as e:
+            logger.error(f"Failed to start consuming messages: {e}")
+            raise e
 
     def close_connection(self):
         self.__rabbitmq.close_connection()

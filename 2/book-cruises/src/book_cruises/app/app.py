@@ -5,6 +5,8 @@ from book_cruises.commons.utils import logger
 from book_cruises.commons.utils import config
 from .di import initialize_dependencies, get_message_middleware
 
+import time
+
 # Initialize Flask app
 app = Flask(__name__)
 flask_configs = {
@@ -24,17 +26,19 @@ response_storage = {}  # Store responses temporarily
 
 def process_response(message):
     """Callback to process responses from RabbitMQ."""
-    try:
-        response = json.loads(message)
-        logger.info(f"Received response: {response}")
+    # try:
+    #     response = json.loads(message)
+    #     logger.info(f"Received response: {response}")
 
-        # Store the response in the temporary storage
-        response_id = response.get("id")
-        if response_id:
-            response_storage[response_id] = response
-            logger.info(f"Stored response with ID {response_id}")
-    except Exception as e:
-        logger.error(f"Failed to process message: {e}")
+    #     # Store the response in the temporary storage
+    #     response_id = response.get("id")
+    #     if response_id:
+    #         response_storage[response_id] = response
+    #         logger.info(f"Stored response with ID {response_id}")
+    # except Exception as e:
+    #     logger.error(f"Failed to process message: {e}")
+
+    logger.info(f"Received response: {message}")
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -47,11 +51,22 @@ def index():
             "departure_harbor": request.form.get("departure_harbor"),
             "arrival_harbor": request.form.get("arrival_harbor"),
         }
-        msg_middleware.publish_message(
-            config.BOOK_SVC_QUEUE,
-            json.dumps(query_message),
-            properties={"correlation_id": correlation_id},
-        )
+
+        # Create a temporary queue for the response
+        try:
+            response_queue_name = f"book-svc-response-queue-{correlation_id}"
+            response_queue_id = msg_middleware.create_temporary_queue(response_queue_name)
+            msg_middleware.consume_messages({response_queue_id: process_response})
+
+            logger.info(f"Publishing message to {config.BOOK_SVC_QUEUE}: {query_message}")
+            msg_middleware.publish_message(
+                config.BOOK_SVC_QUEUE,
+                json.dumps(query_message),
+                properties={"correlation_id": correlation_id, "reply_to": response_queue_id},
+            )
+        except Exception as e:
+            logger.error(f"Failed to publish message: {e}")
+            return render_template("index.html", error="Failed to publish message.")
 
     return render_template("index.html", trips=trips)
 

@@ -28,6 +28,18 @@ class RabbitMQ:
             logger.error(f"Failed to initialize RabbitMQ: {e}")
             raise e
 
+    def declare_exclusive_queue(self, queue_name: str) -> str:
+        try:
+            result = self.__channel.queue_declare(
+                queue=queue_name,
+                exclusive=True,  # Automatically delete the queue when the client disconnects
+            )
+            logger.info(f"Created temporary queue: {result.method.queue}")
+            return result.method.queue
+        except Exception as e:
+            logger.error(f"Failed to create temporary queue {queue_name}: {e}")
+            raise e
+
     def publish_message(self, queue_name:str, message: str, properties: dict = None):
         try:
             if not self.__channel:
@@ -37,7 +49,8 @@ class RabbitMQ:
             # Add correlation_id to message properties
             basic_properties = pika.BasicProperties(
                 delivery_mode=2,  # Make message persistent
-                correlation_id=properties.get("correlation_id") if properties else None
+                correlation_id=properties.get("correlation_id", None),
+                reply_to=properties.get("reply_to", None),
             )
 
             # Publish a message to the queue
@@ -45,7 +58,7 @@ class RabbitMQ:
                 exchange="",
                 routing_key=queue_name,
                 body=message,
-                properties=basic_properties
+                properties=basic_properties,
             )
             logger.info(f"Message published to queue {queue_name}: {message}")
         except Exception as e:
@@ -60,13 +73,23 @@ class RabbitMQ:
 
             # Start consuming messages for each queue with its respective callback
             for queue, callback in queue_callbacks.items():
-                if queue not in self.__queues:
-                    raise ValueError(f"Queue {queue} is not declared.")
                 self.__channel.basic_consume(queue=queue, on_message_callback=callback, auto_ack=True)
                 logger.info("Set callback for queue: %s", queue)
-            self.__channel.start_consuming()
+            # self.__channel.start_consuming()
         except Exception as e:
             logger.error(f"Failed to consume messages: {e}")
+            raise e
+    
+    def start_consuming(self):
+        try:
+            if not self.__channel:
+                logger.error("RabbitMQ channel is not initialized.")
+                return
+
+            # Start consuming messages
+            self.__channel.start_consuming()
+        except Exception as e:
+            logger.error(f"Failed to start consuming messages: {e}")
             raise e
 
     def close_connection(self):

@@ -15,10 +15,11 @@ class BookSvc:
 
         self.__queue_callbacks = {
             config.BOOK_SVC_QUEUE: self.__process_itinerary,
-            config.BOOK_SVC_RESPONSE_QUEUE: self.__process_response,  # Add a response queue
         }
     
     def __process_itinerary(self, itinerary_data: str, properties: dict) -> None:
+        response_queue = properties.reply_to
+        logger.debug(f"Reply to queue: {response_queue}")
         correlation_id = properties.correlation_id
         logger.debug(f"Received itinerary query with correlation_id {correlation_id}: {itinerary_data}")
         try:
@@ -30,35 +31,35 @@ class BookSvc:
 
             # Publish the itineraries to the response queue with correlation_id
             for itinerary in itineraries:
-                correlation_id = str(uuid.uuid4())  # Generate a unique correlation ID
                 itinerary_json = itinerary.json()
                 self.__msg_middleware.publish_message(
-                    config.BOOK_SVC_RESPONSE_QUEUE,
+                    response_queue,
                     itinerary_json,
                     properties={"correlation_id": correlation_id}
                 )
-                logger.info(f"Published itinerary with correlation_id {correlation_id}: {itinerary_json}")
+                logger.info(f"Published itinerary in Queue {response_queue} with correlation_id {correlation_id}: {itinerary_json}")
 
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
     
-    def __process_response(self, response_data: str, properties: dict) -> None:
-        try:
-            correlation_id = properties.get("correlation_id")
-            if not correlation_id:
-                logger.warning("Response received without correlation_id. Ignoring.")
-                return
+    # def __process_response(self, response_data: str, properties: dict) -> None:
+    #     try:
+    #         correlation_id = properties.corelation_id
+    #         if not correlation_id:
+    #             logger.warning("Response received without correlation_id. Ignoring.")
+    #             return
 
-            logger.debug(f"Received response with correlation_id {correlation_id}: {response_data}")
+    #         logger.debug(f"Received response with correlation_id {correlation_id}: {response_data}")
 
-            # Store the response in the temporary storage
-            self.__response_storage[correlation_id] = response_data
-        except Exception as e:
-            logger.error(f"Failed to process response: {e}")
+    #         # Store the response in the temporary storage
+    #         self.__response_storage[correlation_id] = response_data
+    #     except Exception as e:
+    #         logger.error(f"Failed to process response: {e}")
     
     def run(self):
         logger.info("Book Service initialized")
         self.__msg_middleware.consume_messages(self.__queue_callbacks)
+        self.__msg_middleware.start_consuming()
 
 def main() -> None: 
     initialize_dependencies()

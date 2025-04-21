@@ -2,7 +2,7 @@ import inject
 from book_cruises.commons.utils import MessageMiddleware, config
 
 def configure_dependencies(binder: inject.Binder) -> None:
-    queues = [config.BOOK_SVC_QUEUE, config.BOOK_SVC_RESPONSE_QUEUE]
+    queues = [config.BOOK_SVC_QUEUE]
 
     msg_middleware = MessageMiddleware(
         host=config.RABBITMQ_HOST,
