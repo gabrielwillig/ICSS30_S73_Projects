@@ -1,3 +1,5 @@
+import json
+import uuid
 import time
 from typing import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +15,9 @@ class MessageMiddleware:
         self.__INITIAL_BACKOFF = 1  # seconds
         self.__MAX_BACKOFF = 60  # seconds
         self.__BACKOFF_MULTIPLIER = 2
-    
+
+        self.__response_storage = {}  # Temporary storage for responses
+
     def is_connected(self) -> bool:
         """Check if the RabbitMQ connection is established."""
         return self.__rabbitmq.is_connected()
@@ -44,13 +48,13 @@ class MessageMiddleware:
     def publish_message(self, queue_name: str, message: str, properties: dict = None):
         self.__rabbitmq.publish_message(queue_name, message, properties)
 
-    def create_temporary_queue(self, queue_name: str) -> str:
+    def create_temporary_queue(self, queue_name: str = "") -> str:
         try:
             return self.__rabbitmq.declare_exclusive_queue(queue_name)
         except Exception as e:
             logger.error(f"Failed to create temporary queue {queue_name}: {e}")
             raise e
-        
+
     def consume_messages(self, queue_callbacks: dict[str, Callable]):
         wrapped_callbacks = {
             queue: self.__wrap_callback(callback) for queue, callback in queue_callbacks.items()
@@ -84,6 +88,48 @@ class MessageMiddleware:
                 # Reinitialize the RabbitMQ connection
                 self.initialize()
     
+    def set_response_storage(self, correlation_id: str, response: dict):
+        """Store the response in the temporary storage."""
+        self.__response_storage[correlation_id] = response
+        logger.info(f"Stored response with ID {correlation_id}")
+
+    def publish_consume(
+        self,
+        queue_name: str,
+        publish_msg: str,
+        callback: Callable,
+        correlation_id: str = None,
+    ):
+        """Publish a message and consume the response."""
+        correlation_id = str(uuid.uuid4())
+        response_queue_id = self.create_temporary_queue()
+        self.consume_messages({response_queue_id: callback})
+
+        # Send message
+        self.publish_message(
+            queue_name,
+            json.dumps(publish_msg),
+            properties={"correlation_id": correlation_id, "reply_to": response_queue_id},
+        )
+
+        # Modified part: consume for a limited time
+        timeout = time.time() + 5  # 5-second timeout
+
+        while time.time() < timeout:
+            # This is a non-blocking version you would need to implement
+            self.refresh_connection(time_limit=0.5)
+
+            # Check if we received responses
+            if self.__response_storage.get(correlation_id):
+                # Consume the response
+                response = self.__response_storage.pop(correlation_id, None)
+                if response:
+                    logger.info(f"Received response: {response}")
+                    return response
+                else:
+                    logger.warning(f"No response found for correlation ID {correlation_id}")
+            time.sleep(0.1)
+
     def start_consuming(self):
         try:
             self.__rabbitmq.start_consuming()

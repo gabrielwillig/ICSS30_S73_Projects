@@ -1,5 +1,5 @@
 import inject
-import uuid
+import json
 from book_cruises.commons.utils import config
 from book_cruises.commons.utils import MessageMiddleware, Database, logger
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
@@ -27,15 +27,20 @@ class BookSvc:
             itineraries = self.__repository.get_itineraries(itinerary_dto)
             logger.debug(f"Available itineraries: {itineraries}")
 
-            # Publish the itineraries to the response queue with correlation_id
+            list_itineraries_dict = []
             for itinerary in itineraries:
                 itinerary_json = itinerary.json()
-                self.__msg_middleware.publish_message(
-                    response_queue,
-                    itinerary_json,
-                    properties={"correlation_id": correlation_id}
-                )
-                logger.info(f"Published itinerary in Queue {response_queue} with correlation_id {correlation_id}: {itinerary_json}")
+                list_itineraries_dict.append(json.loads(itinerary_json))
+            
+            # Convert the list of itineraries to JSON
+            json_encoded_itineraries = json.dumps(list_itineraries_dict)
+
+            self.__msg_middleware.publish_message(
+                response_queue,
+                json_encoded_itineraries,
+                properties={"correlation_id": correlation_id}
+            )
+            logger.info(f"Published itineraries in Queue {response_queue} with correlation_id {correlation_id}: {json_encoded_itineraries}")
 
         except Exception as e:
             logger.error(f"Failed to process message: {e}")

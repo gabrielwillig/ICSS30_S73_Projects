@@ -32,7 +32,7 @@ class RabbitMQ:
             logger.error(f"Failed to initialize RabbitMQ: {e}")
             raise e
 
-    def declare_exclusive_queue(self, queue_name: str) -> str:
+    def declare_exclusive_queue(self, queue_name: str = '') -> str:
         try:
             result = self.__channel.queue_declare(
                 queue=queue_name,
