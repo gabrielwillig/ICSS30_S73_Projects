@@ -6,7 +6,6 @@ from pika import ConnectionParameters, BlockingConnection, PlainCredentials, Bas
 from pika.exceptions import StreamLostError, AMQPConnectionError
 from book_cruises.commons.utils import logger
 
-@DeprecationWarning
 class Producer(threading.Thread):
     def __init__(self, host, username, password, *args, **kwargs):
         super().__init__(*args, **kwargs)

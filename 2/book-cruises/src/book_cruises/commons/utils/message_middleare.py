@@ -87,7 +87,7 @@ class MessageMiddleware:
 
                 # Reinitialize the RabbitMQ connection
                 self.initialize()
-    
+
     def set_response_storage(self, correlation_id: str, response: dict):
         """Store the response in the temporary storage."""
         self.__response_storage[correlation_id] = response

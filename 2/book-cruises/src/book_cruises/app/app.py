@@ -48,7 +48,7 @@ def index():
 
         if not msg_middleware.is_connected():
             msg_middleware.initialize()
-            
+
         # Create a temporary queue for the response
         try:
             trips = msg_middleware.publish_consume(
@@ -58,7 +58,7 @@ def index():
             )
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
-            
+
     return render_template("index.html", trips=trips)
 
 
