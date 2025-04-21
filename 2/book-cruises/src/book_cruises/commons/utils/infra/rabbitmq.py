@@ -96,6 +96,17 @@ class RabbitMQ:
             logger.error(f"Failed to start consuming messages: {e}")
             raise e
 
+    def refresh_connection(self, time_limit: float = 0.5):
+        if self.__connection:
+            try:
+                self.__connection.process_data_events(time_limit=time_limit)
+            except pika.exceptions.AMQPConnectionError as e:
+                logger.error(f"Connection error: {e}")
+                self.close_connection()
+                self.initialize()
+        else:
+            logger.error("No active RabbitMQ connection to refresh.")
+
     def close_connection(self):
         if self.__connection:
             self.__connection.close()

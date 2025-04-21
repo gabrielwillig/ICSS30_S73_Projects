@@ -91,6 +91,9 @@ class MessageMiddleware:
             logger.error(f"Failed to start consuming messages: {e}")
             raise e
 
+    def refresh_connection(self, time_limit: float = 0.5):
+        self.__rabbitmq.refresh_connection(time_limit=time_limit)
+
     def close_connection(self):
         self.__rabbitmq.close_connection()
 
