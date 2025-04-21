@@ -24,7 +24,7 @@ msg_middleware = get_message_middleware()
 response_storage = {}  # Store responses temporarily
 
 
-def process_response(message):
+def process_response(message, test):
     """Callback to process responses from RabbitMQ."""
     # try:
     #     response = json.loads(message)
@@ -37,7 +37,6 @@ def process_response(message):
     #         logger.info(f"Stored response with ID {response_id}")
     # except Exception as e:
     #     logger.error(f"Failed to process message: {e}")
-
     logger.info(f"Received response: {message}")
 
 
@@ -52,22 +51,36 @@ def index():
             "arrival_harbor": request.form.get("arrival_harbor"),
         }
 
-        # Create a temporary queue for the response
         try:
+            # Create response queue and set callback
             response_queue_name = f"book-svc-response-queue-{correlation_id}"
             response_queue_id = msg_middleware.create_temporary_queue(response_queue_name)
             msg_middleware.consume_messages({response_queue_id: process_response})
-
-            logger.info(f"Publishing message to {config.BOOK_SVC_QUEUE}: {query_message}")
+            
+            # Send message
             msg_middleware.publish_message(
                 config.BOOK_SVC_QUEUE,
                 json.dumps(query_message),
                 properties={"correlation_id": correlation_id, "reply_to": response_queue_id},
             )
-        except Exception as e:
-            logger.error(f"Failed to publish message: {e}")
-            return render_template("index.html", error="Failed to publish message.")
+            
+            # Modified part: consume for a limited time
+            timeout = time.time() + 5  # 5-second timeout
+            
+            while time.time() < timeout:
+                # This is a non-blocking version you would need to implement
+                msg_middleware.refresh_connection(time_limit=0.5)
+                
+                # Check if we received responses
+                if response_storage.get(correlation_id):
+                    trips = response_storage[correlation_id]
+                    break
+                    
+                time.sleep(0.1)
 
+        except Exception as e:
+            logger.error(f"Failed to process message: {e}")
+            
     return render_template("index.html", trips=trips)
 
 
