@@ -19,12 +19,10 @@ class BookSvc:
     
     def __process_itinerary(self, itinerary_data: str, properties: dict) -> None:
         response_queue = properties.reply_to
-        logger.debug(f"Reply to queue: {response_queue}")
         correlation_id = properties.correlation_id
-        logger.debug(f"Received itinerary query with correlation_id {correlation_id}: {itinerary_data}")
         try:
             itinerary_dto = ItineraryDTO.parse_raw(itinerary_data)
-            logger.debug(f"Received itinerary query: {itinerary_dto}")
+            logger.debug(f"Received itinerary query with correlation_id {correlation_id}: {itinerary_data}")
 
             itineraries = self.__repository.get_itineraries(itinerary_dto)
             logger.debug(f"Available itineraries: {itineraries}")

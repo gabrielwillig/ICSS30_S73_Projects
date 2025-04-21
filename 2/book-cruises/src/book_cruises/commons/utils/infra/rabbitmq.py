@@ -10,6 +10,10 @@ class RabbitMQ:
         self.__password = password
         self.__connection = None
         self.__channel = None
+    
+    def is_connected(self) -> bool:
+        """Check if the RabbitMQ connection is established."""
+        return self.__connection and self.__connection.is_open
 
     def initialize(self):
         try:

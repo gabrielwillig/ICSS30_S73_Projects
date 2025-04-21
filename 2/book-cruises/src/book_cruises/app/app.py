@@ -3,7 +3,7 @@ import uuid
 from flask import Flask, render_template, request
 from book_cruises.commons.utils import logger
 from book_cruises.commons.utils import config
-from .di import initialize_dependencies, get_message_middleware
+from .di import config_dependencies, get_message_middleware
 
 import time
 
@@ -18,11 +18,10 @@ flask_configs = {
 app.config.from_mapping(flask_configs)
 
 # Get RabbitMQ middleware
-initialize_dependencies()
+config_dependencies()
 msg_middleware = get_message_middleware()
 
 response_storage = {}  # Store responses temporarily
-
 
 def process_response(message):
     """Callback to process responses from RabbitMQ."""
@@ -52,6 +51,9 @@ def index():
             "arrival_harbor": request.form.get("arrival_harbor"),
         }
 
+        if not msg_middleware.is_connected():
+            msg_middleware.initialize()
+            
         # Create a temporary queue for the response
         try:
             response_queue_name = f"book-svc-response-queue-{correlation_id}"

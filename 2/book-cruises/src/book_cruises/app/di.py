@@ -13,9 +13,9 @@ def configure_dependencies(binder: inject.Binder) -> None:
 
     binder.bind(MessageMiddleware, msg_middleware)
 
-def initialize_dependencies():
+def config_dependencies():
     inject.configure(configure_dependencies)
-    inject.instance(MessageMiddleware).initialize()
+    inject.instance(MessageMiddleware)
 
 def get_message_middleware() -> MessageMiddleware:
     return inject.instance(MessageMiddleware)

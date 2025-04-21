@@ -13,6 +13,10 @@ class MessageMiddleware:
         self.__INITIAL_BACKOFF = 1  # seconds
         self.__MAX_BACKOFF = 60  # seconds
         self.__BACKOFF_MULTIPLIER = 2
+    
+    def is_connected(self) -> bool:
+        """Check if the RabbitMQ connection is established."""
+        return self.__rabbitmq.is_connected()
 
     def initialize(self):
         # Initialize the RabbitMQ connection
