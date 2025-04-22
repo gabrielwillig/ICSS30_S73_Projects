@@ -1,7 +1,7 @@
 import json
 from flask import Flask, render_template, request
 from book_cruises.commons.utils import logger
-from book_cruises.commons.utils import config, RabbitMQProducer
+from book_cruises.commons.utils import config, Producer
 from .di import config_dependencies, get_rabbitmq_producer
 
 import time
@@ -18,7 +18,7 @@ app.config.from_mapping(flask_configs)
 
 # Get RabbitMQ middleware
 config_dependencies()
-producer: RabbitMQProducer = get_rabbitmq_producer()
+producer: Producer = get_rabbitmq_producer()
 
 
 
