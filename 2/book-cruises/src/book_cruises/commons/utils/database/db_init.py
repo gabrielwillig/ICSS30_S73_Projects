@@ -1,7 +1,8 @@
-from book_cruises.commons.utils.infra.postgres import Postgres
-from book_cruises.commons.utils import config, logger
 from datetime import datetime, timedelta
 import random
+
+from book_cruises.commons.utils import config, logger
+from .database import Database
 
 
 def generate_dummy_data():
@@ -40,7 +41,7 @@ def generate_dummy_data():
     return dummy_data
 
 
-def initialize_itineraries_table(postgres: Postgres):
+def initialize_itineraries_table(database: Database):
     # Create the itineraries table if it doesn't exist
     create_table_query = """
     CREATE TABLE IF NOT EXISTS itineraries (
@@ -58,11 +59,11 @@ def initialize_itineraries_table(postgres: Postgres):
         updated_at TIMESTAMP DEFAULT transaction_timestamp()
     );
     """
-    postgres.execute_query(create_table_query)
+    database.execute_query(create_table_query)
 
     # Check if the table is empty
     check_table_query = "SELECT COUNT(*) AS count FROM itineraries;"
-    result = postgres.execute_query(check_table_query)
+    result = database.execute_query(check_table_query)
     if result and result[0]["count"] == 0:
         dummy_data = generate_dummy_data()
         logger.info("Inserting dummy data into the itineraries table...")
@@ -75,25 +76,25 @@ def initialize_itineraries_table(postgres: Postgres):
             visiting_harbors, number_of_days, price
         ) VALUES %s;
         """
-        postgres.execute_many(insert_data_query, dummy_data)
+        database.execute_many(insert_data_query, dummy_data)
         logger.info("Dummy data inserted into the itineraries table.")
     else:
         logger.info("Itineraries table already contains data. Skipping data insertion.")
 
 
 def initialize_database():
-    postgres = Postgres(
+    database = Database(
         host=config.DB_HOST,
         database=config.DB_NAME,
         user=config.DB_USER,
         password=config.DB_PASSWORD,
         port=config.DB_PORT,
     )
-    postgres.initialize()
+    database.initialize()
 
     # Initialize each table
-    initialize_itineraries_table(postgres)
-    postgres.close_connection()
+    initialize_itineraries_table(database)
+    database.close_connection()
 
 
 if __name__ == "__main__":
