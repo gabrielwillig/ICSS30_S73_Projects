@@ -103,11 +103,12 @@
     <table>
         <thead>
             <tr>
-                <th>ID</th>
                 <th>Ship</th>
                 <th>Departure Date</th>
                 <th>Departure Harbor</th>
                 <th>Arrival Harbor</th>
+                <th>Visiting Harbors</th>
+                <th>Number of Nights</th>
                 <th>Price</th>
                 <th>Action</th>
             </tr>
@@ -115,11 +116,12 @@
         <tbody>
             {% for trip in trips %}
             <tr>
-                <td>{{ trip.id }}</td>
                 <td>{{ trip.ship }}</td>
                 <td>{{ trip.departure_date }}</td>
                 <td>{{ trip.departure_harbor }}</td>
                 <td>{{ trip.arrival_harbor }}</td>
+                <td>{{ trip.visiting_harbors }}</td>
+                <td>{{ trip.number_of_days }}</td>
                 <td>${{ trip.price }}</td>
                 <td>
                     <form action="/payment" method="POST" style="margin: 0;">

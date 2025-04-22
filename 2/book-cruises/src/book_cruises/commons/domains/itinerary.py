@@ -20,6 +20,8 @@ class Itinerary(BaseModel):
         default_factory=list, description="List of visiting harbors"
     )
     number_of_days: int = Field(description="Number of days for the itinerary")
+    passengers: int = Field(description="Max of passengers for the itinerary")
+    cabins:int = Field(description="Number of available cabins for the itinerary")
     price: float = Field(description="Price of the itinerary")
 
     @staticmethod
@@ -35,6 +37,8 @@ class Itinerary(BaseModel):
             arrival_time=dto.arrival_time,
             visiting_harbors=dto.visiting_harbors,
             number_of_days=dto.number_of_days,
+            passengers=dto.passengers,
+            cabins=dto.cabins,
             price=dto.price,
         )
 
@@ -49,5 +53,7 @@ class Itinerary(BaseModel):
             arrival_time=self.arrival_time,
             visiting_harbors=self.visiting_harbors,
             number_of_days=self.number_of_days,
+            passengers=self.passengers,
+            cabins=self.cabins,
             price=self.price,
         )

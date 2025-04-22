@@ -21,8 +21,9 @@ def generate_dummy_data():
         arrival_date = departure_date + timedelta(days=random.randint(1, 10))
         visiting_harbors = random.sample(harbors, random.randint(1, len(harbors) - 1))
         number_of_days = (arrival_date - departure_date).days
+        passengers = random.randrange(2400, 7001, 100)
+        cabins = passengers // 3
         price = round(random.uniform(500, 5000), 2)
-
         dummy_data.append(
             (
                 ship,
@@ -33,6 +34,8 @@ def generate_dummy_data():
                 arrival_date,
                 visiting_harbors,
                 number_of_days,
+                passengers,
+                cabins,
                 price,
             )
         )
@@ -53,6 +56,8 @@ def initialize_itineraries_table(postgres: Postgres):
         arrival_date DATE NOT NULL,
         visiting_harbors TEXT[],
         number_of_days INT NOT NULL,
+        passengers INT NOT NULL,
+        cabins INT NOT NULL,
         price DECIMAL(10, 2) NOT NULL,
         created_at TIMESTAMP DEFAULT transaction_timestamp(),
         updated_at TIMESTAMP DEFAULT transaction_timestamp()
@@ -72,7 +77,8 @@ def initialize_itineraries_table(postgres: Postgres):
         INSERT INTO itineraries (
             ship, departure_date, departure_time, departure_harbor, 
             arrival_harbor, arrival_date, 
-            visiting_harbors, number_of_days, price
+            visiting_harbors, number_of_days, 
+            passengers, cabins, price
         ) VALUES %s;
         """
         postgres.execute_many(insert_data_query, dummy_data)

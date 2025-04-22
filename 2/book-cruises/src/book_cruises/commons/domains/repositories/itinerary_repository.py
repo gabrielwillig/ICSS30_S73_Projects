@@ -31,6 +31,8 @@ class ItineraryRepository:
                 arrival_date=row["arrival_date"],
                 visiting_harbors=row["visiting_harbors"],
                 number_of_days=row["number_of_days"],
+                passengers=row["passengers"],
+                cabins=row["cabins"],
                 price=row["price"]
             )
             itineraries.append(itinerary)

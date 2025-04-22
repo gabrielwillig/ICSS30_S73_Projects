@@ -15,6 +15,8 @@ class ItineraryDTO(BaseModel):
         default_factory=list, description="List of visiting harbors"
     )
     number_of_days: Optional[int] = Field(None, description="Number of days for the itinerary")
+    passengers: Optional[int] = Field(None, description="Max of passengers for the itinerary")
+    cabins: Optional[int] = Field(None, description="Number of available cabins for the itinerary")
     price: Optional[float] = Field(None, description="Price of the itinerary")
 
     @field_validator("departure_date", "arrival_date", "departure_time", mode="before")
