@@ -14,10 +14,10 @@ class BookSvc:
         self.__consumer: Consumer = consumer
         self.__repository = ItineraryRepository(database)
 
-    def __query_itinerary(self, itinerary_data: str) -> list:
+    def __query_itinerary(self, itinerary_data: dict) -> list:
 
         try:
-            itinerary_dto = ItineraryDTO.parse_raw(itinerary_data)
+            itinerary_dto = ItineraryDTO(**itinerary_data)
 
             itineraries = self.__repository.get_itineraries(itinerary_dto)
             logger.debug(f"Available itineraries: {itineraries}")
@@ -32,7 +32,7 @@ class BookSvc:
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
 
-    def __create_reservation(self, reservation_data: str) -> None:
+    def __create_reservation(self, reservation_data: dict) -> None:
         logger.info(f"Creating reservation with data: {reservation_data}")
 
     def run(self):

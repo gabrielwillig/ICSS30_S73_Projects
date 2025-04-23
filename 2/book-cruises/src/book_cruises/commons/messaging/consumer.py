@@ -23,8 +23,7 @@ class RabbitMQConsumer:
         self.queue_callbacks[queue_name] = callback
 
         def wrapper(ch, method, properties: BasicProperties, body):
-            # message = json.loads(body)
-            response = callback(body)
+            response = callback(json.loads(body))
 
             if properties.reply_to and properties.correlation_id:
                 ch.basic_publish(
