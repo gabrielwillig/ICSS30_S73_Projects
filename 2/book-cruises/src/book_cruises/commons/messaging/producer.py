@@ -3,31 +3,31 @@ import json
 import threading
 import time
 from pika import BasicProperties
+from pika.exceptions import AMQPConnectionError
 
+from book_cruises.commons.utils import logger
 from .connection import create_connection
 
 
 class RabbitMQProducer:
     def __init__(self, host, username, password):
-        self.connection = create_connection(host, username, password)
-        self.channel = self.connection.channel()
-        self.response = None
-        self.lock = threading.Lock()
+        self.host = host
+        self.username = username
+        self.password = password
+        self.connection = None
+        self.channel = None
+        self._lock = threading.Lock()
+        self._response_lock = threading.Lock()
         self.responses = {}
 
     def _ensure_channel(self):
-        """Ensure the channel is open before publishing."""
-        if not self.connection or self.connection.is_closed:
-            self.connection = create_connection(self.host, self.username, self.password)
-
-        if not self.channel or self.channel.is_closed:
-            self.channel = self.connection.channel()
-
-    def _on_response(self, ch, method, props, body):
-        correlation_id = props.correlation_id
-        with self.lock:
-            self.responses[correlation_id] = json.loads(body)
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        with self._lock:
+            if not self.connection or self.connection.is_closed:
+                self.connection = create_connection(self.host, self.username, self.password)
+                logger.info("Creating new connection for producer")
+            if not self.channel or self.channel.is_closed:
+                self.channel = self.connection.channel()
+                logger.info("Creating new channel for producer")
 
     def publish(self, queue, message: dict):
         self._ensure_channel()
@@ -37,6 +37,12 @@ class RabbitMQProducer:
             body=json.dumps(message).encode(),
             properties=BasicProperties(content_type="application/json", delivery_mode=2),
         )
+        self.close()
+
+    def _on_response(self, ch, method, props, body):
+        with self._response_lock:
+            self.responses[props.correlation_id] = json.loads(body)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def rpc_publish(self, queue, message: dict, timeout=5):
         self._ensure_channel()
@@ -45,7 +51,9 @@ class RabbitMQProducer:
         callback_queue = result.method.queue
 
         self.channel.basic_consume(
-            queue=callback_queue, on_message_callback=self._on_response, auto_ack=False
+            queue=callback_queue,
+            on_message_callback=self._on_response,
+            auto_ack=False
         )
 
         self.channel.basic_publish(
@@ -60,15 +68,30 @@ class RabbitMQProducer:
             ),
         )
 
-        start = time.time()
-        while time.time() - start < timeout:
-            self.connection.process_data_events(time_limit=0.2)
-            with self.lock:
-                if correlation_id in self.responses:
-                    return self.responses.pop(correlation_id)
+        # Start the I/O loop in a separate thread if not already running
+        def consumer_loop():
+            while correlation_id not in self.responses:
+                try:
+                    self.connection.process_data_events(time_limit=0.1)
+                except AMQPConnectionError as e:
+                    print(f"Lost connection while waiting for RPC reply: {e}")
+                    break
 
-        return None
+        start = time.time()
+        thread = threading.Thread(target=consumer_loop)
+        thread.start()
+        thread.join(timeout)
+        
+        self.close()
+
+        with self._response_lock:
+            return self.responses.pop(correlation_id, None)
+        
 
     def close(self):
-        if self.connection.is_open:
+        if self.channel and self.channel.is_open:
+            self.channel.close()
+            logger.info("Connection closed for producer")
+        if self.connection and self.connection.is_open:
             self.connection.close()
+            logger.info("Connection closed for producer")
