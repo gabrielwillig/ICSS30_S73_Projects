@@ -8,6 +8,7 @@ class Config(BaseSettings):
 
     # RabbitMQ Queues
     BOOK_SVC_QUEUE: str = "book_svc_queue"  
+    RESERVE_CREATED_QUEUE: str = "reserve_created_queue"
 
     # PostgreSQL Configuration
     DB_HOST: str = "localhost"

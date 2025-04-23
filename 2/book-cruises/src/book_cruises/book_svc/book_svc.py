@@ -14,8 +14,8 @@ class BookSvc:
         self.__consumer: Consumer = consumer
         self.__repository = ItineraryRepository(database)
 
-    def __process_itinerary(self, itinerary_data: str) -> None:
-    
+    def __query_itinerary(self, itinerary_data: str) -> None:
+
         try:
             itinerary_dto = ItineraryDTO.parse_raw(itinerary_data)
 
@@ -33,13 +33,18 @@ class BookSvc:
 
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
+    
+    def __create_reservation(self, reservation_data: str) -> None:
+        logger.info(f"Creating reservation with data: {reservation_data}")
 
     def run(self):
         logger.info("Book Service initialized")
-        self.__consumer.declare_queue(
-            config.BOOK_SVC_QUEUE, durable=False
-        )
-        self.__consumer.register_callback(config.BOOK_SVC_QUEUE, self.__process_itinerary)
+        self.__consumer.declare_queue(config.BOOK_SVC_QUEUE, durable=False)
+        self.__consumer.register_callback(config.BOOK_SVC_QUEUE, self.__query_itinerary)
+
+        self.__consumer.declare_queue(config.RESERVE_CREATED_QUEUE, durable=False)
+        self.__consumer.register_callback(config.RESERVE_CREATED_QUEUE, self.__create_reservation)
+        
         self.__consumer.start_consuming()
 
 

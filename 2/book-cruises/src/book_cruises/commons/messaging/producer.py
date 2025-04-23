@@ -17,6 +17,15 @@ class RabbitMQProducer:
         self.lock = threading.Lock()
         self.responses = {}
 
+    def _ensure_channel(self):
+        """Ensure the channel is open before publishing."""
+        if not self.connection or self.connection.is_closed:
+            self.connection = create_connection(self.host, self.username, self.password)
+
+        if not self.channel or self.channel.is_closed:
+            self.channel = self.connection.channel()
+
+
     def _on_response(self, ch, method, props, body):
         correlation_id = props.correlation_id
         with self.lock:
@@ -24,6 +33,7 @@ class RabbitMQProducer:
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def publish(self, queue, message: dict):
+        self._ensure_channel()
         self.channel.queue_declare(queue=queue, durable=True)
         self.channel.basic_publish(
             exchange='',
@@ -36,6 +46,7 @@ class RabbitMQProducer:
         )
 
     def rpc_publish(self, queue, message: dict, timeout=5):
+        self._ensure_channel()
         correlation_id = str(uuid.uuid4())
         result = self.channel.queue_declare(queue='', exclusive=True, auto_delete=True)
         callback_queue = result.method.queue
