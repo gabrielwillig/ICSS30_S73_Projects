@@ -1,5 +1,3 @@
-# messaging/consumer.py
-
 import json
 from typing import Callable, Dict
 from pika import BasicProperties

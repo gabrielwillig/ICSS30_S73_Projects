@@ -1,5 +1,3 @@
-# messaging/connection.py
-
 from pika import BlockingConnection, ConnectionParameters, PlainCredentials
 
 

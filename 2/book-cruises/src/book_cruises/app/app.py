@@ -30,7 +30,7 @@ def index():
 
         try:
             trips = producer.rpc_publish(
-                config.BOOK_SVC_QUEUE,
+                config.QUERY_RESERVATION_QUEUE,
                 query_message,
                 timeout=5,
             )

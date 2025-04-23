@@ -1,5 +1,3 @@
-# messaging/producer.py
-
 import uuid
 import json
 import threading
@@ -33,7 +31,6 @@ class RabbitMQProducer:
 
     def publish(self, queue, message: dict):
         self._ensure_channel()
-        self.channel.queue_declare(queue=queue, durable=True)
         self.channel.basic_publish(
             exchange="",
             routing_key=queue,

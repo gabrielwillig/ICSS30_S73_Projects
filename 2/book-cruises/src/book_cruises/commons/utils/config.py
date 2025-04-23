@@ -6,9 +6,13 @@ class Config(BaseSettings):
     RABBITMQ_USERNAME: str = "user"  
     RABBITMQ_PASSWORD: str = "password"  
 
-    # RabbitMQ Queues
-    BOOK_SVC_QUEUE: str = "book_svc_queue"  
+    # Book Service Configuration
+    QUERY_RESERVATION_QUEUE: str = "query_reservation_queue"  
     RESERVE_CREATED_QUEUE: str = "reserve_created_queue"
+
+    # Payment Service Configuration
+    APPROVED_PAYMENT_QUEUE: str = "approved_payment_queue"
+    REFUSED_PAYMENT_QUEUE: str = "refused_payment_queue"
 
     # PostgreSQL Configuration
     DB_HOST: str = "localhost"
