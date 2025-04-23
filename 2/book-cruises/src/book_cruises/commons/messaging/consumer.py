@@ -21,7 +21,14 @@ class RabbitMQConsumer:
         self.queue_callbacks[queue_name] = callback
 
         def wrapper(ch, method, properties: BasicProperties, body):
-            response = callback(json.loads(body))
+            try: 
+                message_decoded = json.loads(body.decode())
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to decode message: {e}")
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+            
+            response = callback(message_decoded)
 
             if properties.reply_to and properties.correlation_id:
                 ch.basic_publish(
