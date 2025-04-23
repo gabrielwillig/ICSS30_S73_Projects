@@ -105,9 +105,10 @@
             
             <input type="hidden" id="base_price" value="{{ price }}">
             <input type="hidden" id="trip_id" name="trip_id" value="{{ trip_id }}">
+            <input type="hidden" id="total_price" name="price" value="{{ price }}">
             
             <div class="price-display">
-                Total Price: $<span id="total_price">{{ price }}</span>
+                Total Price: $<span id="displayed_total_price">{{ price }}</span>
             </div>
             
             <button type="submit">Confirm and Pay</button>
@@ -121,7 +122,10 @@
             const basePrice = parseFloat(document.getElementById('base_price').value);
             const passengers = parseInt(document.getElementById('passengers').value);
             const totalPrice = basePrice * passengers;
-            document.getElementById('total_price').textContent = totalPrice.toFixed(2);
+            
+            // Update both the display and the hidden input for form submission
+            document.getElementById('displayed_total_price').textContent = totalPrice.toFixed(2);
+            document.getElementById('total_price').value = totalPrice.toFixed(2);
         }
         
         // Calculate initial total on page load

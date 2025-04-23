@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Success</title>
+    <title>Payment Processing</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -13,7 +13,13 @@
             text-align: center;
         }
         h1 {
+            color: #0056b3;
+        }
+        .success h1 {
             color: #28a745;
+        }
+        .error h1 {
+            color: #dc3545;
         }
         p {
             font-size: 18px;
@@ -30,11 +36,89 @@
         a:hover {
             background-color: #003d80;
         }
+        .success a {
+            background-color: #28a745;
+        }
+        .success a:hover {
+            background-color: #218838;
+        }
+        .error a {
+            background-color: #dc3545;
+        }
+        .error a:hover {
+            background-color: #c82333;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #0056b3;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <h1>Payment Successful!</h1>
-    <p>Thank you for purchasing trip ID {{ trip_id }} for ${{ price }}.</p>
-    <a href="/">Back to Home</a>
+    <div id="loading">
+        <h1>Processing Your Payment</h1>
+        <div class="spinner"></div>
+        <p>Please wait while we process your payment... ID {{ payment_id }}.</p>
+        <p>Total: ${{ price }} for {{ passengers }} passenger{% if passengers|int > 1 %}s{% endif %}</p>
+    </div>
+    
+    <div id="success" class="success hidden">
+        <h1>Payment Successful!</h1>
+        <p>Thank you for purchasing! ID {{ payment_id }}.</p>
+        <p>Your booking includes {{ passengers }} passenger{% if passengers|int > 1 %}s{% endif %}.</p>
+        <a href="/ticket?payment_id={{ payment_id }}">View My Ticket</a>
+    </div>
+    
+    <div id="error" class="error hidden">
+        <h1>Payment Failed</h1>
+        <p>We're sorry, but there was an issue processing your payment! ID {{ payment_id }}.</p>
+        <p>Amount: ${{ price }} for {{ passengers }} passenger{% if passengers|int > 1 %}s{% endif %}</p>
+        <a href="/">Back to Home</a>
+    </div>
+
+    <script>
+        // Check payment status periodically
+        function checkPaymentStatus() {
+            fetch('/payment/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'processing') {
+                        // Continue checking if still processing
+                        setTimeout(checkPaymentStatus, 1000);
+                    } else if (data.status === 'success') {
+                        // Show success message
+                        document.getElementById('loading').classList.add('hidden');
+                        document.getElementById('success').classList.remove('hidden');
+                    } else if (data.status === 'error') {
+                        // Show error message
+                        document.getElementById('loading').classList.add('hidden');
+                        document.getElementById('error').classList.remove('hidden');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking payment status:', error);
+                    // In case of error, retry after a delay
+                    setTimeout(checkPaymentStatus, 2000);
+                });
+        }
+        
+        // Start checking status when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial status check
+            setTimeout(checkPaymentStatus, 1000);
+        });
+    </script>
 </body>
 </html>
