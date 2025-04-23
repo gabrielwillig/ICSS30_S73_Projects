@@ -1,6 +1,7 @@
 import inject
-from book_cruises.commons.utils import Consumer, Database, config
-from book_cruises.commons.utils import logger
+from book_cruises.commons.messaging import Consumer
+from book_cruises.commons.database import Database
+from book_cruises.commons.utils import logger, config
 
 def configure_dependencies(binder: inject.Binder) -> None:
 

@@ -1,7 +1,8 @@
 import inject
 import json
-from book_cruises.commons.utils import config
-from book_cruises.commons.utils import Consumer, Database, logger
+from book_cruises.commons.utils import config, logger
+from book_cruises.commons.messaging import Consumer
+from book_cruises.commons.database import Database
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
 from book_cruises.commons.domains.repositories import ItineraryRepository
 from .di import initialize_dependencies

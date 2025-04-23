@@ -1,5 +1,6 @@
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
-from book_cruises.commons.utils import Database, logger
+from book_cruises.commons.database import Database
+from book_cruises.commons.utils import logger
 
 class ItineraryRepository:
     def __init__(self, database: Database):

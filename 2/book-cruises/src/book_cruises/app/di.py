@@ -1,5 +1,6 @@
 import inject
-from book_cruises.commons.utils import config, Producer
+from book_cruises.commons.messaging import Producer
+from book_cruises.commons.utils import config
 
 def configure_dependencies(binder: inject.Binder) -> None:
     queues = [config.BOOK_SVC_QUEUE]

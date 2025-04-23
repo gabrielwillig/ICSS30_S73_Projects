@@ -1,10 +1,8 @@
 import json
 from flask import Flask, render_template, request
-from book_cruises.commons.utils import logger
-from book_cruises.commons.utils import config, Producer
+from book_cruises.commons.utils import config, logger
+from book_cruises.commons.messaging import Producer
 from .di import config_dependencies, get_rabbitmq_producer
-
-import time
 
 # Initialize Flask app
 app = Flask(__name__)
