@@ -14,7 +14,7 @@ class BookSvc:
         self.__consumer: Consumer = consumer
         self.__repository = ItineraryRepository(database)
 
-    def __query_itinerary(self, itinerary_data: str) -> None:
+    def __query_itinerary(self, itinerary_data: str) -> list:
 
         try:
             itinerary_dto = ItineraryDTO.parse_raw(itinerary_data)
@@ -27,9 +27,7 @@ class BookSvc:
                 itinerary_json = itinerary.json()
                 list_itineraries_dict.append(json.loads(itinerary_json))
 
-            # Convert the list of itineraries to JSON
-            json_encoded_itineraries = json.dumps(list_itineraries_dict)
-            return json_encoded_itineraries
+            return list_itineraries_dict
 
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
