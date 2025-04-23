@@ -48,11 +48,14 @@ class BookSvc:
         message = payment_data["message"]
         status = message["status"]
     
-        if status == "refused":
-            logger.error(f"Processing refused payment with data: {message}")
-        elif status == "approved":
-            logger.info(f"Processing approved payment with data: {message}")
-    
+        match status:
+            case "approved":
+                logger.info(f"Processing approved payment with data: {message}")
+            case "refused":
+                logger.error(f"Processing refused payment with data: {message}")
+            case _:
+                logger.error(f"Unknown status: {status}")
+       
     def run(self):
         logger.info("Book Service initialized")
         self.__consumer.declare_queue(config.QUERY_RESERVATION_QUEUE, durable=False)

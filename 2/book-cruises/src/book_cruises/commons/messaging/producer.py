@@ -24,10 +24,8 @@ class RabbitMQProducer:
         with self._lock:
             if not self.connection or self.connection.is_closed:
                 self.connection = create_connection(self.host, self.username, self.password)
-                logger.info("Creating new connection for producer")
             if not self.channel or self.channel.is_closed:
                 self.channel = self.connection.channel()
-                logger.info("Creating new channel for producer")
 
     def publish(self, queue, message: dict):
         self._ensure_channel()
@@ -91,7 +89,5 @@ class RabbitMQProducer:
     def close(self):
         if self.channel and self.channel.is_open:
             self.channel.close()
-            logger.info("Connection closed for producer")
         if self.connection and self.connection.is_open:
             self.connection.close()
-            logger.info("Connection closed for producer")

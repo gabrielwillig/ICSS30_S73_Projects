@@ -14,6 +14,9 @@ class Config(BaseSettings):
     APPROVED_PAYMENT_QUEUE: str = "approved_payment_queue"
     REFUSED_PAYMENT_QUEUE: str = "refused_payment_queue"
 
+    # Ticket Service Configuration
+    TICKET_GENERATED: str = "ticket_generated_queue"
+
     # PostgreSQL Configuration
     DB_HOST: str = "localhost"
     DB_NAME: str = "book-cruises"
