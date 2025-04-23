@@ -41,6 +41,23 @@ def index():
     return render_template("index.html", trips=trips)
 
 
+@app.route("/book", methods=["POST"])
+def book():
+    try:
+        trip_id = request.form.get("trip_id")
+        price = request.form.get("price")
+        
+        # Use a default date or get it from the form if available
+        departure_date = request.form.get("departure_date", "2026-01-01")
+
+        # Instead of raising NotImplementedError, render the booking form
+        logger.info(f"Showing booking form for trip ID {trip_id} with base price ${price}")
+        
+        return render_template("book.html", trip_id=trip_id, price=price, departure_date=departure_date)
+    except Exception as e:
+        logger.error(f"Failed to process payment: {e}")
+        return "An error occurred while processing your request.", 500
+
 @app.route("/payment", methods=["POST"])
 def payment():
     try:
@@ -53,11 +70,10 @@ def payment():
         raise NotImplementedError
 
         # Return a success message or redirect to a confirmation page
-        return render_template("payment_success.html", trip_id=trip_id, price=price)
+        return render_template("payment.html", trip_id=trip_id, price=price)
     except Exception as e:
         logger.error(f"Failed to process payment: {e}")
         return "An error occurred while processing the payment.", 500
-
 
 def main():
     logger.info("Starting Flask app...")
