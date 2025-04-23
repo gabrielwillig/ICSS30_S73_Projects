@@ -2,7 +2,7 @@ import json
 from flask import Flask, render_template, request
 from book_cruises.commons.utils import config, logger
 from book_cruises.commons.messaging import Producer
-from .di import config_dependencies, get_rabbitmq_producer
+from .di import configure_dependencies, get_producer
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -14,9 +14,8 @@ flask_configs = {
 }
 app.config.from_mapping(flask_configs)
 
-# Get RabbitMQ middleware
-config_dependencies()
-producer: Producer = get_rabbitmq_producer()
+configure_dependencies()
+producer: Producer = get_producer()
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -29,13 +28,13 @@ def index():
             "arrival_harbor": request.form.get("arrival_harbor"),
         }
 
-        # Create a temporary queue for the response
         try:
             trips = producer.rpc_publish(
                 config.BOOK_SVC_QUEUE,
                 query_message,
                 timeout=5,
             )
+            logger.info(f"Received trips: {trips}")
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
 

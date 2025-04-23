@@ -3,7 +3,7 @@ from book_cruises.commons.messaging import Consumer
 from book_cruises.commons.database import Database
 from book_cruises.commons.utils import logger, config
 
-def configure_dependencies(binder: inject.Binder) -> None:
+def __configure_dependencies(binder: inject.Binder) -> None:
 
     consumer = Consumer(
         host=config.RABBITMQ_HOST,
@@ -22,9 +22,7 @@ def configure_dependencies(binder: inject.Binder) -> None:
     binder.bind(Database, database)
     binder.bind(Consumer, consumer)
 
-def initialize_dependencies():
-
-    inject.configure(configure_dependencies)
+def configure_dependencies():
+    inject.configure(__configure_dependencies)
     inject.instance(Database).initialize()  
-    inject.instance(Consumer)
     logger.info("Dependencies initialized")

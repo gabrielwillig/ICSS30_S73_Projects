@@ -2,7 +2,7 @@ import inject
 from book_cruises.commons.messaging import Producer
 from book_cruises.commons.utils import config
 
-def configure_dependencies(binder: inject.Binder) -> None:
+def __configure_dependencies(binder: inject.Binder) -> None:
     queues = [config.BOOK_SVC_QUEUE]
 
     producer = Producer(
@@ -13,9 +13,8 @@ def configure_dependencies(binder: inject.Binder) -> None:
 
     binder.bind(Producer, producer)
 
-def config_dependencies():
-    inject.configure(configure_dependencies)
-    inject.instance(Producer)
+def configure_dependencies():
+    inject.configure(__configure_dependencies)
 
-def get_rabbitmq_producer() -> Producer:
+def get_producer() -> Producer:
     return inject.instance(Producer)

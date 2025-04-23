@@ -5,7 +5,7 @@ from book_cruises.commons.messaging import Consumer
 from book_cruises.commons.database import Database
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
 from book_cruises.commons.domains.repositories import ItineraryRepository
-from .di import initialize_dependencies
+from .di import configure_dependencies  
 
 
 class BookSvc:
@@ -33,7 +33,7 @@ class BookSvc:
 
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
-    
+
     def __create_reservation(self, reservation_data: str) -> None:
         logger.info(f"Creating reservation with data: {reservation_data}")
 
@@ -44,12 +44,12 @@ class BookSvc:
 
         self.__consumer.declare_queue(config.RESERVE_CREATED_QUEUE, durable=False)
         self.__consumer.register_callback(config.RESERVE_CREATED_QUEUE, self.__create_reservation)
-        
+
         self.__consumer.start_consuming()
 
 
 def main() -> None:
-    initialize_dependencies()
+    configure_dependencies()
 
     book_svc = BookSvc()
     book_svc.run()

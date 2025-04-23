@@ -28,10 +28,10 @@ class RabbitMQConsumer:
 
             if properties.reply_to and properties.correlation_id:
                 ch.basic_publish(
-                    exchange='',
+                    exchange="",
                     routing_key=properties.reply_to,
                     properties=properties,
-                    body=json.dumps(response).encode()
+                    body=json.dumps(response).encode(),
                 )
 
             ch.basic_ack(delivery_tag=method.delivery_tag)

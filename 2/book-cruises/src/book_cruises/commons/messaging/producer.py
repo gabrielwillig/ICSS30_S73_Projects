@@ -25,7 +25,6 @@ class RabbitMQProducer:
         if not self.channel or self.channel.is_closed:
             self.channel = self.connection.channel()
 
-
     def _on_response(self, ch, method, props, body):
         correlation_id = props.correlation_id
         with self.lock:
@@ -36,37 +35,32 @@ class RabbitMQProducer:
         self._ensure_channel()
         self.channel.queue_declare(queue=queue, durable=True)
         self.channel.basic_publish(
-            exchange='',
+            exchange="",
             routing_key=queue,
             body=json.dumps(message).encode(),
-            properties=BasicProperties(
-                content_type='application/json',
-                delivery_mode=2
-            )
+            properties=BasicProperties(content_type="application/json", delivery_mode=2),
         )
 
     def rpc_publish(self, queue, message: dict, timeout=5):
         self._ensure_channel()
         correlation_id = str(uuid.uuid4())
-        result = self.channel.queue_declare(queue='', exclusive=True, auto_delete=True)
+        result = self.channel.queue_declare(queue="", exclusive=True, auto_delete=True)
         callback_queue = result.method.queue
 
         self.channel.basic_consume(
-            queue=callback_queue,
-            on_message_callback=self._on_response,
-            auto_ack=False
+            queue=callback_queue, on_message_callback=self._on_response, auto_ack=False
         )
 
         self.channel.basic_publish(
-            exchange='',
+            exchange="",
             routing_key=queue,
             body=json.dumps(message).encode(),
             properties=BasicProperties(
                 reply_to=callback_queue,
                 correlation_id=correlation_id,
-                content_type='application/json',
-                delivery_mode=2
-            )
+                content_type="application/json",
+                delivery_mode=2,
+            ),
         )
 
         start = time.time()
