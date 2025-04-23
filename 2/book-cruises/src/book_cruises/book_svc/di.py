@@ -1,15 +1,13 @@
 import inject
-from book_cruises.commons.utils import MessageMiddleware, Database, config
+from book_cruises.commons.utils import Consumer, Database, config
 from book_cruises.commons.utils import logger
 
 def configure_dependencies(binder: inject.Binder) -> None:
-    queues = [config.BOOK_SVC_QUEUE]
 
-    msg_middleware = MessageMiddleware(
+    consumer = Consumer(
         host=config.RABBITMQ_HOST,
         username=config.RABBITMQ_USERNAME,
         password=config.RABBITMQ_PASSWORD,
-        queues=queues
     )
 
     database = Database(
@@ -21,11 +19,11 @@ def configure_dependencies(binder: inject.Binder) -> None:
     )
 
     binder.bind(Database, database)
-    binder.bind(MessageMiddleware, msg_middleware)
+    binder.bind(Consumer, consumer)
 
 def initialize_dependencies():
 
     inject.configure(configure_dependencies)
     inject.instance(Database).initialize()  
-    inject.instance(MessageMiddleware).initialize()
+    inject.instance(Consumer)
     logger.info("Dependencies initialized")

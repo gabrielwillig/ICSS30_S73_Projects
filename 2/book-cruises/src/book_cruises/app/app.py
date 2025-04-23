@@ -21,7 +21,6 @@ config_dependencies()
 producer: Producer = get_rabbitmq_producer()
 
 
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     trips = []

@@ -1,7 +1,7 @@
 import inject
 import json
 from book_cruises.commons.utils import config
-from book_cruises.commons.utils import MessageMiddleware, Database, logger
+from book_cruises.commons.utils import Consumer, Database, logger
 from book_cruises.commons.domains import Itinerary, ItineraryDTO
 from book_cruises.commons.domains.repositories import ItineraryRepository
 from .di import initialize_dependencies
@@ -9,23 +9,14 @@ from .di import initialize_dependencies
 
 class BookSvc:
     @inject.autoparams()
-    def __init__(self, msg_middleware: MessageMiddleware, database: Database):
-        self.__msg_middleware: MessageMiddleware = msg_middleware
+    def __init__(self, consumer: Consumer, database: Database):
+        self.__consumer: Consumer = consumer
         self.__repository = ItineraryRepository(database)
-        self.__response_storage = {}  # Temporary storage for tracking responses
 
-        self.__queue_callbacks = {
-            config.BOOK_SVC_QUEUE: self.__process_itinerary,
-        }
-
-    def __process_itinerary(self, itinerary_data: str, properties: dict) -> None:
-        response_queue = properties.reply_to
-        correlation_id = properties.correlation_id
+    def __process_itinerary(self, itinerary_data: str) -> None:
+    
         try:
             itinerary_dto = ItineraryDTO.parse_raw(itinerary_data)
-            logger.debug(
-                f"Received itinerary query with correlation_id {correlation_id}: {itinerary_data}"
-            )
 
             itineraries = self.__repository.get_itineraries(itinerary_dto)
             logger.debug(f"Available itineraries: {itineraries}")
@@ -37,23 +28,18 @@ class BookSvc:
 
             # Convert the list of itineraries to JSON
             json_encoded_itineraries = json.dumps(list_itineraries_dict)
-
-            self.__msg_middleware.publish_message(
-                response_queue,
-                json_encoded_itineraries,
-                properties={"correlation_id": correlation_id},
-            )
-            logger.info(
-                f"Published itineraries in Queue {response_queue} with correlation_id {correlation_id}: {json_encoded_itineraries}"
-            )
+            return json_encoded_itineraries
 
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
 
     def run(self):
         logger.info("Book Service initialized")
-        self.__msg_middleware.consume_messages(self.__queue_callbacks)
-        self.__msg_middleware.start_consuming()
+        self.__consumer.declare_queue(
+            config.BOOK_SVC_QUEUE, durable=False
+        )
+        self.__consumer.register_callback(config.BOOK_SVC_QUEUE, self.__process_itinerary)
+        self.__consumer.start_consuming()
 
 
 def main() -> None:

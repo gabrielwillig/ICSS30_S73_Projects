@@ -1,1 +1,0 @@
-from .rabbitmq import RabbitMQ
