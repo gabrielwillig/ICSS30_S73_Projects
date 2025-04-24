@@ -3,14 +3,15 @@ import random
 import time
 import threading
 import requests
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, session, jsonify
 from book_cruises.commons.utils import config, logger
+from book_cruises.commons.domains import Payment, Itinerary
 from book_cruises.commons.messaging import Producer
 from .di import configure_dependencies, get_producer
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = "pindamonhangaba"  # Add a secret key for sessions
+app.secret_key = "sistemas-distribuidos"  # Add a secret key for sessions
 flask_configs = {
     "debug": config.DEBUG,
     "host": config.HOST,
@@ -26,7 +27,7 @@ producer: Producer = get_producer()
 payment_statuses = {}
 
 
-def process_payment_after_delay(payment_info):
+def process_payment_after_delay(payment_info: Payment):
     """Background task to process payment after a delay"""
     logger.debug(payment_info)
     payment_id = payment_info.get("payment_id")
@@ -102,44 +103,32 @@ def book():
 def payment():
     try:
         trip_id = request.form.get("trip_id")
-        price = request.form.get("price")
-        passengers = request.form.get("passengers", 1)
-
-        # Store payment information in the session
-        session["payment_info"] = {
-            "trip_id": trip_id,
-            "price": price,
-            "passengers": passengers,
-            "timestamp": time.time(),
-        }
-
+        price = float(request.form.get("price"))
+        passengers = int(request.form.get("passengers", 1))
         # Generate a unique payment ID
         payment_id = f"{trip_id}-{int(time.time())}"
 
-        # Set initial payment status to "processing"
-        payment_statuses[payment_id] = "processing"
+        payment_obj = Payment(
+            payment_id=payment_id, trip_id=trip_id, price=price, passengers=passengers
+        )
 
-        # Store payment_id in session for status check
+        session["payment_info"] = payment_obj.dict()
         session["payment_id"] = payment_id
 
-        # Start with processing state
+        # Set initial payment status to "processing"
+        payment_statuses[payment_id] = payment_obj.status
+
+        # Log payment process start
         logger.info(
             f"Started payment process ID {payment_id} with price ${price} for {passengers} passengers"
         )
 
-        payment_info = {
-            "payment_id": payment_id,
-            "trip_id": trip_id,
-            "price": price,
-            "passengers": passengers,
-        }
-
         # Start background thread to process payment after delay
         payment_thread = threading.Thread(
             target=process_payment_after_delay,
-            args=(payment_info,),
+            args=(payment_obj.dict(),),
+            daemon=True,
         )
-        payment_thread.daemon = True
         payment_thread.start()
 
         # Return the payment processing page with initial "processing" status
@@ -148,7 +137,7 @@ def payment():
             price=price,
             payment_id=payment_id,
             passengers=passengers,
-            payment_status="processing",
+            payment_status=payment_obj.status,
         )
     except Exception as e:
         logger.error(f"Failed to process payment: {e}")
