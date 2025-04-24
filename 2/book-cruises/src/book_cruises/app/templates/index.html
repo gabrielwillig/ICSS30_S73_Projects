@@ -69,28 +69,38 @@
         }
         .action-buttons {
             display: flex;
-            gap: 5px;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
         }
         
-        .button-book {
+        .cruise-button {
             background-color: #28a745;
             color: white;
             border: none;
             padding: 8px 12px;
             border-radius: 4px;
             cursor: pointer;
-            width: auto;
-            margin-bottom: 0;
+            width: 120px; /* Fixed width for both buttons */
+            text-align: center;
+            font-weight: bold;
+            margin: 0;
         }
+        
+        .button-book {
+            background-color: #28a745;
+        }
+        
         .button-subscribe {
             background-color: #0056b3;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            width: auto;
-            margin-bottom: 0;
+        }
+        
+        .button-form {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
         }
         
         #promotions-container {
@@ -225,17 +235,19 @@
                 <td>{{ trip.number_of_days }}</td>
                 <td>${{ trip.price }}</td>
                 <td>
-                    <form action="/book" method="POST" style="margin: 0;">
-                        <input type="hidden" name="trip_id" value="{{ trip.id }}">
-                        <input type="hidden" name="price" value="{{ trip.price }}">
-                        <button type="submit" style="background-color: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
-                            Book Now
+                    <div class="action-buttons">
+                        <form action="/book" method="POST" class="button-form">
+                            <input type="hidden" name="trip_id" value="{{ trip.id }}">
+                            <input type="hidden" name="price" value="{{ trip.price }}">
+                            <button type="submit" class="cruise-button button-book">
+                                Book Now
+                            </button>
+                        </form>
+                        <button type="button" class="cruise-button button-subscribe" 
+                        onclick="subscribeToDestination('{{ trip.arrival_harbor }}')">
+                            Subscribe
                         </button>
-                    </form>
-                    <button type="button" class="button-subscribe" 
-                    onclick="subscribeToDestination('{{ trip.arrival_harbor }}')">
-                        Subscribe
-                    </button>
+                    </div>
                 </td>
             </tr>
             {% endfor %}

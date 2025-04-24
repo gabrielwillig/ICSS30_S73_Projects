@@ -37,13 +37,25 @@ class RabbitMQConsumer:
         self.channel.basic_consume(queue=queue_name, on_message_callback=wrapper)
 
     def basic_consume(self, queue_name: str, auto_ack: bool = False) -> tuple:
-        self.channel.basic_get(
+        return self.channel.basic_get(
             queue=queue_name,
             auto_ack=auto_ack,
         )
 
+    def exchange_declare(self, exchange: str, exchange_type: str = "topic") -> None:
+        """Declare an exchange. Can be skipped if exchange exists."""
+        self.channel.exchange_declare(exchange=exchange, exchange_type=exchange_type)
+    
+    def queue_bind(self, queue_name: str, exchange: str, routing_key: str = None) -> None:
+        """Bind a queue to an exchange with a routing key."""
+        self.channel.queue_bind(queue=queue_name, exchange=exchange, routing_key=routing_key)
+
     def basic_reject(self, delivery_tag: int, requeue: bool = False):
         self.channel.basic_reject(delivery_tag=delivery_tag, requeue=requeue)
+
+    def delete_queue(self, queue_name: str):
+        """Delete a queue. Use with caution."""
+        self.channel.queue_delete(queue=queue_name)
 
     def start_consuming(self):
         if not self.queue_callbacks:
@@ -55,5 +67,5 @@ class RabbitMQConsumer:
         return self
 
     def close(self):
-        if self.connection.is_open:
+        if self.connection and self.connection.is_open:
             self.connection.close()
