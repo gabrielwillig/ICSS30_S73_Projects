@@ -33,6 +33,8 @@ class Config(BaseSettings):
     # Logging Configuration
     LOG_LEVEL: str = "DEBUG" if DEBUG else "INFO"  # Set to DEBUG if DEBUG is True, otherwise INFO
 
+    book_svc_queue: str = "book_svc_queue"
+
     class Config:
         env_file = ".env"  # Load environment variables from a .env file if present
         env_file_encoding = "utf-8"

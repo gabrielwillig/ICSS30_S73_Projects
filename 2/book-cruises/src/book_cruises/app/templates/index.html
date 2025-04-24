@@ -67,6 +67,117 @@
             font-size: 18px;
             color: #666;
         }
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .cruise-button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 120px; /* Fixed width for both buttons */
+            text-align: center;
+            font-weight: bold;
+            margin: 0;
+        }
+        
+        .button-book {
+            background-color: #28a745;
+        }
+        
+        .button-subscribe {
+            background-color: #0056b3;
+        }
+        
+        .button-form {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        
+        #promotions-container {
+            margin-top: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .promotion-card {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            width: 280px;
+            border-left: 5px solid #e63946;
+            position: relative;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .promotion-card h3 {
+            margin-top: 0;
+            color: #0056b3;
+        }
+        
+        .promotion-card .discount {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background-color: #e63946;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        
+        .promotion-card .price {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .promotion-card .original-price {
+            text-decoration: line-through;
+            color: #888;
+            margin-right: 10px;
+        }
+        
+        .promotion-card .discounted-price {
+            font-size: 1.2em;
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .promotion-card .expiry {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 10px;
+        }
+
+        #subscription-status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .active-subscription {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
     </style>
 </head>
 <body>
@@ -124,13 +235,19 @@
                 <td>{{ trip.number_of_days }}</td>
                 <td>${{ trip.price }}</td>
                 <td>
-                    <form action="/book" method="POST" style="margin: 0;">
-                        <input type="hidden" name="trip_id" value="{{ trip.id }}">
-                        <input type="hidden" name="price" value="{{ trip.price }}">
-                        <button type="submit" style="background-color: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">
-                            Book Now
+                    <div class="action-buttons">
+                        <form action="/book" method="POST" class="button-form">
+                            <input type="hidden" name="trip_id" value="{{ trip.id }}">
+                            <input type="hidden" name="price" value="{{ trip.price }}">
+                            <button type="submit" class="cruise-button button-book">
+                                Book Now
+                            </button>
+                        </form>
+                        <button type="button" class="cruise-button button-subscribe" 
+                        onclick="subscribeToDestination('{{ trip.arrival_harbor }}')">
+                            Subscribe
                         </button>
-                    </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -139,5 +256,72 @@
     {% else %}
     <p class="no-results">No trips found. Please try a different search.</p>
     {% endif %}
+    <div id="subscription-status"></div>
+    <h2 id="promotions-title" style="display: none;">Promotions</h2>
+    <div id="promotions-container"></div>
+    
+    <script>
+        let eventSource = null;
+        let currentDestination = null;
+        
+        function subscribeToDestination(destination) {
+            // Close any existing connection
+            if (eventSource) {
+                eventSource.close();
+                document.getElementById('promotions-container').innerHTML = '';
+            }
+
+            currentDestination = destination;
+            
+            // Update subscription status
+            const statusElement = document.getElementById('subscription-status');
+            statusElement.innerHTML = `<strong>Subscribed to ${destination} promotions!</strong> We'll notify you about special offers.`;
+            statusElement.className = 'active-subscription';
+            statusElement.style.display = 'block';
+            
+            // Show promotions title
+            document.getElementById('promotions-title').style.display = 'block';
+            
+            // Connect to SSE endpoint
+            eventSource = new EventSource(`/subscribe/${destination.toLowerCase()}`);
+            
+            eventSource.onmessage = function(event) {
+                // Parse promotion data
+                const promotion = JSON.parse(event.data);
+                console.log('Received promotion:', promotion);
+                
+                // Create promotion card
+                addPromotionCard(promotion);
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('SSE Error:', error);
+                eventSource.close();
+            };
+        }
+        function addPromotionCard(promotion) {
+            const container = document.getElementById('promotions-container');
+            
+            // Create card element
+            const card = document.createElement('div');
+            card.className = 'promotion-card';
+            
+            // Format card content
+            card.innerHTML = `
+                <div class="discount">-${promotion.discount}%</div>
+                <h3>${promotion.title}</h3>
+                <p>${promotion.description}</p>
+                <div class="price">
+                    <span class="original-price">$${promotion.original_price}</span>
+                    <span class="discounted-price">$${promotion.discounted_price}</span>
+                </div>
+                <p>Departure: ${promotion.departure_date}</p>
+                <p class="expiry">Offer expires in ${promotion.expires_in}</p>
+            `;
+            
+            // Add to container
+            container.prepend(card); // Newest on top
+        }
+    </script>
 </body>
 </html>

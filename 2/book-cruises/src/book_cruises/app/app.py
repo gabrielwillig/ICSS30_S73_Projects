@@ -3,11 +3,12 @@ import random
 import time
 import threading
 import requests
-from flask import Flask, render_template, request, session, jsonify
+import uuid
+from flask import Flask, render_template, request, session, jsonify, Response, stream_with_context
 from book_cruises.commons.utils import config, logger
 from book_cruises.commons.domains import Payment, Itinerary
-from book_cruises.commons.messaging import Producer
-from .di import configure_dependencies, get_producer
+from book_cruises.commons.messaging import Producer, Consumer
+from .di import configure_dependencies, get_producer, get_consumer
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -22,6 +23,7 @@ app.config.from_mapping(flask_configs)
 
 configure_dependencies()
 producer: Producer = get_producer()
+consumer: Consumer = get_consumer()
 
 # Simple in-memory payment tracking
 payment_statuses = {}
@@ -151,22 +153,65 @@ def payment_status():
 
     if not payment_id or payment_id not in payment_statuses:
         return jsonify({"status": "unknown"})
-
     return jsonify({"status": payment_statuses[payment_id]})
 
 
 @app.route("/ticket", methods=["GET"])
 def ticket():
     try:
-        trip_id = request.args.get("trip_id")
-        # In a real application, you would verify the ticket exists and is valid
-
-        # For now, just return a simple message
-        return f"<h1>Ticket for Trip {trip_id}</h1><p>Your ticket has been issued successfully!</p><a href='/'>Return Home</a>"
+        trip_id = session.get("payment_id")
+        return render_template("ticket.html", trip_id=trip_id)
     except Exception as e:
         logger.error(f"Failed to display ticket: {e}")
-        return "An error occurred while displaying your ticket.", 500
+        return render_template("error.html", message="Unable to display your ticket."), 500
 
+@app.route('/subscribe/<destination>')
+def subscribe_to_promotions(destination):
+    """Subscribe to promotions for a specific destination using Server-Sent Events"""
+    def generate():
+        # Normalize destination name
+        queue_name = f"{destination.lower()}_consumer_{uuid.uuid4().hex}"
+
+        exchange_name = f"{destination.lower()}_promotions_exchange"
+
+        consumer.exchange_declare(exchange_name, exchange_type="fanout")
+
+        consumer.declare_queue(queue_name)
+
+        consumer.queue_bind(queue_name, exchange_name)
+        
+        logger.info(f"Client subscribed to promotions for {destination}")
+        
+        try:
+            while True:
+                method, props, body = consumer.basic_consume(queue_name)
+                if method:
+                    logger.info(f"Sending promotion to {destination}")
+                    yield f"data: {body.decode()}\n\n"
+                    consumer.channel.basic_ack(delivery_tag=method.delivery_tag)
+                else:
+                    time.sleep(1)  # No message, wait a bit before checking again
+                
+        except GeneratorExit:
+            logger.info(f"Client unsubscribed from {destination} promotions")
+        except Exception as e:
+            logger.error(f"Error in promotion stream for {destination}: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            consumer.close()
+            consumer.delete_queue(queue_name)
+            logger.info(f"Closed connection for {destination} promotion subscriber")
+
+    # Use Flask's streaming response with correct SSE headers
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'  # Helps with certain proxies
+        }
+    )
 
 def main():
     logger.info("Starting Flask app...")

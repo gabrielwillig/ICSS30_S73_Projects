@@ -17,8 +17,9 @@ class PaymentSvc:
     def __process_payment(self, payment_data: dict) -> None:
         logger.info(f"Processing payment with data: {payment_data}")
 
+        percentage = random.randint(0, 100)
         # Simulate random success or failure
-        if random.choice([True, False]):  # Randomly choose True (success) or False (failure)
+        if percentage > 30:  # Randomly choose True (success) or False (failure)
             logger.info("Payment approved")
 
             message = {"status": "approved", "payment_data": payment_data}

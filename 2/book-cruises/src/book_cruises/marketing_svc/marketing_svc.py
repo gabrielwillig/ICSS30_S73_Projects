@@ -1,0 +1,180 @@
+import inject
+import json
+import random
+import time
+import threading
+from datetime import datetime, timedelta, date
+from book_cruises.commons.utils import config, logger
+from book_cruises.commons.messaging import Producer
+from book_cruises.commons.database import Database
+from .di import configure_dependencies  
+
+class MarketingSvc:
+    @inject.autoparams()
+    def __init__(self, producer: Producer, database: Database):
+        self.__producer: Producer = producer
+        self.__database: Database = database
+        self.__running = False
+        self.__promotion_thread = None
+        self.__destinations = []
+        self.__active_exchanges = []  # Track created queues for cleanup
+    
+    def __get_available_destinations(self):
+        """Fetch unique destinations from database"""
+        try:
+            query = "SELECT DISTINCT arrival_harbor FROM itineraries"
+            results = self.__database.execute_query(query)
+            
+            if not results:
+                raise Exception("No destinations found in the database")
+                
+            self.__destinations = [row["arrival_harbor"] for row in results]
+            logger.info(f"Found {len(self.__destinations)} destinations: {self.__destinations}")
+        except Exception as e:
+            logger.error(f"Error retrieving destinations: {e}")
+            self.__destinations = ["Miami", "Nassau", "San Juan", "Kingston", "Havana"]  # Default set
+    
+    def __get_random_itinerary(self, destination):
+        """Get a random itinerary for a specific destination"""
+        try:
+            query = f"""
+                SELECT * FROM itineraries 
+                WHERE LOWER(arrival_harbor) = LOWER('{destination}')
+                ORDER BY RANDOM() LIMIT 1
+            """
+            results = self.__database.execute_query(query)
+            
+            if results and len(results) > 0:
+                return results[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting random itinerary for {destination}: {e}")
+            return None
+    
+    def __generate_promotion(self, destination):
+        """Generate a promotion for a destination"""
+        itinerary = self.__get_random_itinerary(destination)
+        
+        if not itinerary:
+            logger.warning(f"No itineraries found for destination: {destination}")
+            return None
+            
+        discount = random.randint(10, 40)  # Random discount between 10% and 40%
+        expires_in = random.randint(1, 24)  # Random expiry time 1-24 hours
+        
+        # Handle date serialization properly
+        departure_date = itinerary["departure_date"]
+        if isinstance(departure_date, datetime):
+            formatted_date = departure_date.strftime("%Y-%m-%d")
+        elif isinstance(departure_date, date):
+            formatted_date = departure_date.strftime("%Y-%m-%d")
+        else:
+            formatted_date = str(departure_date)
+        
+        promotion = {
+            "title": f"Special Offer to {destination}!",
+            "description": f"Limited time cruise deal to {destination} on {itinerary['ship']}",
+            "destination": destination,
+            "itinerary_id": itinerary["id"],
+            "discount": discount,
+            "expires_in": f"{expires_in} hours",
+            "original_price": float(itinerary["price"]),
+            "discounted_price": round(float(itinerary["price"]) * (1 - discount/100), 2),
+            "departure_date": formatted_date,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return promotion
+    
+    def __promotion_generator_loop(self):
+        """Background thread to continuously generate promotions"""
+        while self.__running:
+            # Pick a random destination
+            if not self.__destinations:
+                self.__get_available_destinations()
+                
+            if self.__destinations:
+                destination = random.choice(self.__destinations)
+                
+                # Generate promotion
+                promotion = self.__generate_promotion(destination)
+                
+                if promotion:
+                    exchange_name = f"{destination.lower()}_promotions_exchange"
+                    # Publish to destination-specific queue
+                    logger.info(f"Publishing promotion for {destination}: {promotion['discount']}% off")
+                    self.__producer.exchange_publish(
+                        exchange_name,
+                        promotion
+                    )
+                
+            # Wait before generating next promotion (5-15 seconds)
+            time.sleep(random.uniform(5, 15))
+
+    def __delete_exchanges(self):
+        """Purge all promotion queues created by this service"""
+        if not self.__active_exchanges:
+            return
+            
+        logger.info(f"Purging {len(self.__active_exchanges)} promotion exchanges")
+        
+        # Ensure channel is ready
+        self.__producer._ensure_channel()
+        
+        # Purge each exchange
+        for exchange_name in self.__active_exchanges:
+            try:
+                logger.info(f"Deleting exchange: {exchange_name}")
+                self.__producer.channel.exchange_delete(exchange=exchange_name)
+            except Exception as e:
+                logger.error(f"Error purging queue {exchange_name}: {e}")
+        
+        logger.info("All promotion exchanges deleted")
+
+    def run(self):
+        """Start the marketing service"""
+        logger.info("Marketing Service initialized")
+        
+        # Initialize database connection
+        self.__database.initialize()
+        
+        # Get available destinations
+        self.__get_available_destinations()
+        
+        # Declare a queue for each destination
+        self.__active_exchanges = []  # Reset active queues
+        for destination in self.__destinations:
+            exchange_name = f"{destination.lower()}_promotions_exchange"
+            # Use connection directly to declare the queue
+            self.__producer._ensure_channel()
+            self.__producer.channel.exchange_declare(exchange=exchange_name, exchange_type="fanout")
+            logger.info(f"Declared promotion exchange: {exchange_name}")
+            self.__active_exchanges.append(exchange_name)
+        
+        # Start promotion generator thread
+        self.__running = True
+        self.__promotion_thread = threading.Thread(target=self.__promotion_generator_loop)
+        self.__promotion_thread.daemon = True
+        self.__promotion_thread.start()
+        
+        # Keep the main thread alive
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Shutting down Marketing Service...")
+            self.__running = False
+            if self.__promotion_thread:
+                self.__promotion_thread.join(timeout=2)
+            
+            # Clean up by purging all promotion queues
+            self.__delete_exchanges()
+            logger.info("Marketing Service shutdown complete")
+
+
+def main() -> None:
+    """Entry point for the marketing service"""
+    configure_dependencies()
+    
+    marketing_svc = MarketingSvc()
+    marketing_svc.run()
