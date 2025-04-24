@@ -45,7 +45,6 @@ class TicketSvc:
 
     def run(self):
         logger.info("Ticket Service Initialized")
-        self.__consumer.declare_queue(config.TICKET_GENERATED_QUEUE, durable=False)
 
         self.__consumer.register_callback(config.APPROVED_PAYMENT_QUEUE, self.__process_ticket)
         self.__consumer.start_consuming()

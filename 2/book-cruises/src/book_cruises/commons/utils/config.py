@@ -10,6 +10,7 @@ class Config(BaseSettings):
     QUERY_RESERVATION_QUEUE: str = "query_reservation_queue"  
     RESERVE_CREATED_QUEUE: str = "reserve_created_queue"
     BOOK_SVC_WEB_SERVER_PORT: int = 5001
+    BOOK_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Book Service web server
 
     # Payment Service Configuration
     APPROVED_PAYMENT_QUEUE: str = "approved_payment_queue"

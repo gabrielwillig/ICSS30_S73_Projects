@@ -12,13 +12,6 @@ from .di import configure_dependencies, get_producer
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = "sistemas-distribuidos"  # Add a secret key for sessions
-flask_configs = {
-    "debug": config.DEBUG,
-    "host": config.HOST,
-    "port": config.PORT,
-    "user_reloader": config.DEBUG,
-}
-app.config.from_mapping(flask_configs)
 
 configure_dependencies()
 producer: Producer = get_producer()
@@ -39,7 +32,7 @@ def process_payment_after_delay(payment_info: Payment):
     try:
         # Make API call to create reservation
         response = requests.post(
-            "http://127.0.0.1:5001/create_reservation", json=payment_info, timeout=10
+            f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/create_reservation", json=payment_info, timeout=10
         )
 
         if response.status_code == 200:
@@ -170,4 +163,4 @@ def ticket():
 
 def main():
     logger.info("Starting Flask app...")
-    app.run()
+    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

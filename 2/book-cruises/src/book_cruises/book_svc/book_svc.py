@@ -36,6 +36,7 @@ class BookSvc:
             target=self.__app.run,
             kwargs={
                 "port": config.BOOK_SVC_WEB_SERVER_PORT,
+                "host": config.BOOK_SVC_WEB_SERVER_HOST,
             },
         )
 
@@ -132,6 +133,9 @@ class BookSvc:
         logger.info("Book Service initialized")
         self.__consumer.declare_queue(config.QUERY_RESERVATION_QUEUE, durable=False)
         self.__consumer.declare_queue(config.RESERVE_CREATED_QUEUE, durable=False)
+        self.__consumer.declare_queue(config.APPROVED_PAYMENT_QUEUE, durable=False)
+        self.__consumer.declare_queue(config.REFUSED_PAYMENT_QUEUE, durable=False)
+        self.__consumer.declare_queue(config.TICKET_GENERATED_QUEUE, durable=False)
 
         self.__consumer.register_callback(config.QUERY_RESERVATION_QUEUE, self.__query_itinerary)
         self.__consumer.register_callback(config.REFUSED_PAYMENT_QUEUE, self.__process_payment)

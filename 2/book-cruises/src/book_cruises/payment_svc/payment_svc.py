@@ -49,8 +49,6 @@ class PaymentSvc:
 
     def run(self):
         logger.info("Payment Service initialized")
-        self.__consumer.declare_queue(config.APPROVED_PAYMENT_QUEUE, durable=False)
-        self.__consumer.declare_queue(config.REFUSED_PAYMENT_QUEUE, durable=False)
 
         self.__consumer.register_callback(config.RESERVE_CREATED_QUEUE, self.__process_payment)
         self.__consumer.start_consuming()

@@ -62,60 +62,97 @@ services:
     networks:
       - default
 
-  # app:
-  #   container_name: app
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: book-cruises
-  #   restart: no
-  #   depends_on:
-  #     - rabbitmq
-  #   ports:
-  #     - "5000:5000"  # Porta para acessar o front-end
-  #   environment:
-  #     RABBITMQ_HOST: ${RABBITMQ_HOST}
-  #     RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
-  #     RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-  #     # TODO: Add var for queues
-  #   command: >
-  #     sh -c "
-  #     uv run app
-  #     "
-  #   # volumes:
-  #   #   - .:/app
-  #   working_dir: /app
-  #   networks:
-  #     - default
+  book_svc:
+    container_name: book_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      - rabbitmq
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    command: >
+      sh -c "
+      sleep 10;
+      uv run book-svc;
+      "
+    # volumes:
+    #   - .:/app
+    working_dir: /app
+    networks:
+      - default
   
-  # book_svc:
-  #   container_name: book_svc
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: book-cruises
-  #   restart: no
-  #   depends_on:
-  #     - rabbitmq
-  #     - postgres
-  #   environment:
-  #     DB_HOST: ${DB_HOST}
-  #     DB_NAME: ${DB_NAME}
-  #     DB_USER: ${DB_USER}
-  #     DB_PASSWORD: ${DB_PASSWORD}
-  #     DB_PORT: ${DB_PORT}
-  #     RABBITMQ_HOST: ${RABBITMQ_HOST}
-  #     RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
-  #     RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
-  #   command: >
-  #     sh -c "
-  #     uv run book-svc
-  #     "
-  #   # volumes:
-  #   #   - .:/app
-  #   working_dir: /app
-  #   networks:
-  #     - default
+  payment_svc:
+    container_name: payment_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      - book_svc
+    env_file:
+      - .env
+    command: >
+      sh -c "
+      sleep 15;
+      uv run payment-svc;
+      "
+    # volumes:
+    #   - .:/app
+    working_dir: /app
+    networks:
+      - default
+  
+  ticket_svc:
+    container_name: ticket_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      - payment_svc
+    env_file:
+      - .env
+    command: >
+      sh -c "
+      sleep 20;
+      uv run ticket-svc;
+      "
+    # volumes:
+    #   - .:/app
+    working_dir: /app
+    networks:
+      - default
+  
+  app:
+    container_name: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      - book_svc
+    ports:
+      - "5000:5000"  
+    env_file:
+      - .env
+    command: >
+      sh -c "
+      sleep 20;
+      uv run app;
+      "
+    # volumes:
+    #   - .:/app
+    working_dir: /app
+    networks:
+      - default
 
 networks:
   default:
