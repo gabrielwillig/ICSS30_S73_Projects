@@ -37,6 +37,16 @@ class RabbitMQProducer:
         )
         self.close()
 
+    def exchange_publish(self, exchange, message: dict):
+        self._ensure_channel()
+        self.channel.basic_publish(
+            exchange=exchange,
+            routing_key="",
+            body=json.dumps(message).encode(),
+            properties=BasicProperties(content_type="application/json", delivery_mode=2),
+        )
+        self.close()
+
     def _on_response(self, ch, method, props, body):
         with self._response_lock:
             self.responses[props.correlation_id] = json.loads(body)
