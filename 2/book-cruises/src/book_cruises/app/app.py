@@ -153,21 +153,17 @@ def payment_status():
 
     if not payment_id or payment_id not in payment_statuses:
         return jsonify({"status": "unknown"})
-
     return jsonify({"status": payment_statuses[payment_id]})
 
 
 @app.route("/ticket", methods=["GET"])
 def ticket():
     try:
-        trip_id = request.args.get("trip_id")
-        # In a real application, you would verify the ticket exists and is valid
-
-        # For now, just return a simple message
-        return f"<h1>Ticket for Trip {trip_id}</h1><p>Your ticket has been issued successfully!</p><a href='/'>Return Home</a>"
+        trip_id = session.get("payment_id")
+        return render_template("ticket.html", trip_id=trip_id)
     except Exception as e:
         logger.error(f"Failed to display ticket: {e}")
-        return "An error occurred while displaying your ticket.", 500
+        return render_template("error.html", message="Unable to display your ticket."), 500
 
 @app.route('/subscribe/<destination>')
 def subscribe_to_promotions(destination):
