@@ -2,10 +2,13 @@ import json
 import random
 import time
 import threading
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+import pika
+from flask import Flask, render_template, request, session, jsonify, Response, stream_with_context
 from book_cruises.commons.utils import config, logger
-from book_cruises.commons.messaging import Producer
-from .di import configure_dependencies, get_producer
+from book_cruises.commons.messaging import Producer, Consumer
+from .di import configure_dependencies, get_producer, get_consumer
+# Add this to your imports at the top
+from book_cruises.commons.messaging.connection import create_connection
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -20,6 +23,7 @@ app.config.from_mapping(flask_configs)
 
 configure_dependencies()
 producer: Producer = get_producer()
+consumer: Consumer = get_consumer()
 
 # Simple in-memory payment tracking
 payment_statuses = {}
@@ -147,6 +151,101 @@ def ticket():
     except Exception as e:
         logger.error(f"Failed to display ticket: {e}")
         return "An error occurred while displaying your ticket.", 500
+
+@app.route('/subscribe/<destination>')
+def subscribe_to_promotions(destination):
+    """Subscribe to promotions for a specific destination using Server-Sent Events"""
+    def generate():
+        # Normalize destination name
+        queue_name = f"{destination.lower()}_promotions"
+        
+        logger.info(f"Client subscribed to promotions for {destination}")
+        
+        # Create a new connection for this client
+        connection = create_connection(
+            config.RABBITMQ_HOST,
+            config.RABBITMQ_USERNAME, 
+            config.RABBITMQ_PASSWORD
+        )
+        channel = connection.channel()
+        
+        # Ensure queue exists
+        channel.queue_declare(queue=queue_name, durable=True)
+        
+        # Keep track of messages we've already sent to this client
+        processed_messages = set()
+        
+        try:
+            # First, process any messages already in the queue
+            while True:
+                method_frame, header_frame, body = channel.basic_get(
+                    queue=queue_name, 
+                    auto_ack=False
+                )
+                
+                if not method_frame:
+                    # No more messages in queue
+                    break
+                    
+                if body:
+                    # Create a message identifier based on content
+                    message_id = hash(body)
+                    
+                    # Only send if we haven't sent it before
+                    if message_id not in processed_messages:
+                        logger.info(f"Sending existing promotion to client: {body}")
+                        yield f"data: {body.decode()}\n\n"
+                        processed_messages.add(message_id)
+                    
+                    # Reject with requeue=True to keep in queue for other consumers
+                    channel.basic_reject(
+                        delivery_tag=method_frame.delivery_tag, 
+                        requeue=True
+                    )
+            
+            # Then poll for new messages
+            while True:
+                method_frame, header_frame, body = channel.basic_get(
+                    queue=queue_name, 
+                    auto_ack=False
+                )
+                
+                if method_frame and body:
+                    # Create a message identifier
+                    message_id = hash(body)
+                    
+                    # Only send if we haven't sent it before
+                    if message_id not in processed_messages:
+                        logger.info(f"Sending new promotion to client: {body}")
+                        yield f"data: {body.decode()}\n\n"
+                        processed_messages.add(message_id)
+                    
+                    # Reject with requeue=True to keep in queue for other consumers
+                    channel.basic_reject(
+                        delivery_tag=method_frame.delivery_tag, 
+                        requeue=True
+                    )
+                
+                # Wait before checking again to avoid hammering the queue
+                time.sleep(1)
+                
+        except GeneratorExit:
+            logger.info(f"Client unsubscribed from {destination} promotions")
+        finally:
+            # Clean up connection
+            if connection and connection.is_open:
+                connection.close()
+                logger.info(f"Closed connection for {destination} promotion subscriber")
+
+    # Use Flask's streaming response with correct SSE headers
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+        }
+    )
 
 def main():
     logger.info("Starting Flask app...")

@@ -36,6 +36,15 @@ class RabbitMQConsumer:
         self.channel.basic_qos(prefetch_count=1)
         self.channel.basic_consume(queue=queue_name, on_message_callback=wrapper)
 
+    def basic_consume(self, queue_name: str, auto_ack: bool = False) -> tuple:
+        self.channel.basic_get(
+            queue=queue_name,
+            auto_ack=auto_ack,
+        )
+
+    def basic_reject(self, delivery_tag: int, requeue: bool = False):
+        self.channel.basic_reject(delivery_tag=delivery_tag, requeue=requeue)
+
     def start_consuming(self):
         if not self.queue_callbacks:
             raise RuntimeError("No queues registered for consumption.")
