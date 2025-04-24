@@ -34,10 +34,10 @@ class TicketSvc:
         logger.info(f"Processing approved ticket with data: {message}")
         ticket_data = {
             "ticket_id": str(uuid.uuid4()),
-            "data": message
+            "message": message
         }
         self.__producer.publish(
-            config.TICKET_GENERATED,
+            config.TICKET_GENERATED_QUEUE,
             ticket_data,
         )
         logger.info(f"Ticket generated with data: {ticket_data}")
@@ -45,7 +45,7 @@ class TicketSvc:
 
     def run(self):
         logger.info("Ticket Service Initialized")
-        self.__consumer.declare_queue(config.TICKET_GENERATED, durable=False)
+        self.__consumer.declare_queue(config.TICKET_GENERATED_QUEUE, durable=False)
 
         self.__consumer.register_callback(config.APPROVED_PAYMENT_QUEUE, self.__process_ticket)
         self.__consumer.start_consuming()

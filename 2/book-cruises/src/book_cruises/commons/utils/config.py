@@ -9,13 +9,14 @@ class Config(BaseSettings):
     # Book Service Configuration
     QUERY_RESERVATION_QUEUE: str = "query_reservation_queue"  
     RESERVE_CREATED_QUEUE: str = "reserve_created_queue"
+    BOOK_SVC_WEB_SERVER_PORT: int = 5001
 
     # Payment Service Configuration
     APPROVED_PAYMENT_QUEUE: str = "approved_payment_queue"
     REFUSED_PAYMENT_QUEUE: str = "refused_payment_queue"
 
     # Ticket Service Configuration
-    TICKET_GENERATED: str = "ticket_generated_queue"
+    TICKET_GENERATED_QUEUE: str = "ticket_generated_queue"
 
     # PostgreSQL Configuration
     DB_HOST: str = "localhost"
