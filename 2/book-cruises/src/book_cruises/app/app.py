@@ -169,7 +169,7 @@ def subscribe_to_promotions(destination):
 
         consumer.exchange_declare(exchange_name, exchange_type="fanout")
 
-        consumer.declare_queue(queue_name)
+        consumer.queue_declare(queue_name)
 
         consumer.queue_bind(queue_name, exchange_name)
         

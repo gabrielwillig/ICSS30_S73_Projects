@@ -12,7 +12,15 @@ class RabbitMQConsumer:
         self.channel = self.connection.channel()
         self.queue_callbacks: Dict[str, Callable[[dict], dict]] = {}
 
-    def declare_queue(self, queue_name: str, durable: bool = True):
+    def exchange_declare(
+        self, exchange: str, exchange_type: str = "topic", durable: bool = False
+    ) -> None:
+        """Declare an exchange. Can be skipped if exchange exists."""
+        self.channel.exchange_declare(
+            exchange=exchange, exchange_type=exchange_type, durable=durable
+        )
+
+    def queue_declare(self, queue_name: str, durable: bool = True):
         """Optionally declare a queue. Can be skipped if queue exists."""
         self.channel.queue_declare(queue=queue_name, durable=durable)
 
@@ -21,13 +29,13 @@ class RabbitMQConsumer:
         self.queue_callbacks[queue_name] = callback
 
         def wrapper(ch, method, properties: BasicProperties, body):
-            try: 
+            try:
                 message_decoded = json.loads(body.decode())
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to decode message: {e}")
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
-            
+
             response = callback(message_decoded)
 
             if properties.reply_to and properties.correlation_id:
@@ -49,10 +57,6 @@ class RabbitMQConsumer:
             auto_ack=auto_ack,
         )
 
-    def exchange_declare(self, exchange: str, exchange_type: str = "topic") -> None:
-        """Declare an exchange. Can be skipped if exchange exists."""
-        self.channel.exchange_declare(exchange=exchange, exchange_type=exchange_type)
-    
     def queue_bind(self, queue_name: str, exchange: str, routing_key: str = None) -> None:
         """Bind a queue to an exchange with a routing key."""
         self.channel.queue_bind(queue=queue_name, exchange=exchange, routing_key=routing_key)

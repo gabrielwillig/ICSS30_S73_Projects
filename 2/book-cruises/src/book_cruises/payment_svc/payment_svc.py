@@ -30,8 +30,9 @@ class PaymentSvc:
             }
 
             self.__producer.publish(
-                config.APPROVED_PAYMENT_QUEUE,
-                mensage_signed,
+                routing_key=config.APPROVED_PAYMENT_ROUTING_KEY,
+                message=mensage_signed,
+                exchange=config.APP_EXCHANGE,
             )
         else:
             logger.error("Payment refused")

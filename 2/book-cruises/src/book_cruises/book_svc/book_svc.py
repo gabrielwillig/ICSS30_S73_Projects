@@ -131,15 +131,31 @@ class BookSvc:
 
     def run(self):
         logger.info("Book Service initialized")
-        self.__consumer.declare_queue(config.QUERY_RESERVATION_QUEUE, durable=False)
-        self.__consumer.declare_queue(config.RESERVE_CREATED_QUEUE, durable=False)
-        self.__consumer.declare_queue(config.APPROVED_PAYMENT_QUEUE, durable=False)
-        self.__consumer.declare_queue(config.REFUSED_PAYMENT_QUEUE, durable=False)
-        self.__consumer.declare_queue(config.TICKET_GENERATED_QUEUE, durable=False)
+        self.__consumer.exchange_declare(config.APP_EXCHANGE, "direct", durable=False)
+
+        self.__consumer.queue_declare(config.QUERY_RESERVATION_QUEUE, durable=False)
+        self.__consumer.queue_declare(config.RESERVE_CREATED_QUEUE, durable=False)
+        self.__consumer.queue_declare(config.APPROVED_PAYMENT_TICKET_QUEUE, durable=False)
+        self.__consumer.queue_declare(config.APPROVED_PAYMENT_BOOK_SVC_QUEUE, durable=False)
+        self.__consumer.queue_declare(config.REFUSED_PAYMENT_QUEUE, durable=False)
+        self.__consumer.queue_declare(config.TICKET_GENERATED_QUEUE, durable=False)
+
+        self.__consumer.queue_bind(
+            queue_name=config.APPROVED_PAYMENT_BOOK_SVC_QUEUE,
+            exchange=config.APP_EXCHANGE,
+            routing_key=config.APPROVED_PAYMENT_ROUTING_KEY,
+        )
+        self.__consumer.queue_bind(
+            queue_name=config.APPROVED_PAYMENT_TICKET_QUEUE,
+            exchange=config.APP_EXCHANGE,
+            routing_key=config.APPROVED_PAYMENT_ROUTING_KEY,
+        )
 
         self.__consumer.register_callback(config.QUERY_RESERVATION_QUEUE, self.__query_itinerary)
         self.__consumer.register_callback(config.REFUSED_PAYMENT_QUEUE, self.__process_payment)
-        # self.__consumer.register_callback(config.APPROVED_PAYMENT_QUEUE, self.__process_payment)
+        self.__consumer.register_callback(
+            config.APPROVED_PAYMENT_BOOK_SVC_QUEUE, self.__process_payment
+        )
         self.__consumer.register_callback(config.TICKET_GENERATED_QUEUE, self.__process_ticket)
 
         self.__thread_consumer.start()
