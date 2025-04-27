@@ -75,30 +75,41 @@
         }
         
         .cruise-button {
-            background-color: #28a745;
-            color: white;
-            border: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 120px; /* Fixed width for both buttons */
-            text-align: center;
-            font-weight: bold;
-            margin: 0;
+        width: 150px;            /* mesma largura */
+        padding: 12px 0;         /* mesmo padding vertical */
+        font-size: 16px;
+        font-weight: bold;
+        border: none;
+        border-radius: 4px;
+        color: #fff;
+        text-align: center;
+        cursor: pointer;
+        transition: filter 0.2s ease;
+        margin: 0;
         }
-        
+
+        /* cor específica de cada um */
         .button-book {
             background-color: #28a745;
         }
-        
+        .button-book:hover {
+            filter: brightness(0.8);
+            background-color: #28a745;
+        }
+
         .button-subscribe {
             background-color: #0056b3;
         }
-        
+        .button-subscribe:hover {
+            filter: brightness(0.8);
+            background-color: #0056b3;
+        }
         .button-form {
-            margin: 0;
+            background: transparent;
             padding: 0;
-            width: 100%;
+            margin: 0;
+            border: none;
+            box-shadow: none;
             display: flex;
             justify-content: center;
         }

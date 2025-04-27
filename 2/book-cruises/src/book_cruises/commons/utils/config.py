@@ -8,6 +8,7 @@ class Config(BaseSettings):
 
     # RabbitMQ Exchanges
     APP_EXCHANGE: str = "app_exchange"
+    PROMOTIONS_EXCHANGE: str = "promotions_exchange"  # Exchange for promotions
 
     # RabbitMQ Queues
     QUERY_RESERVATION_QUEUE: str = "query_reservation_queue"  

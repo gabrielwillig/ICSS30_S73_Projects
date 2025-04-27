@@ -9,6 +9,7 @@ from book_cruises.commons.utils import config, logger
 from book_cruises.commons.domains import Payment, Itinerary
 from book_cruises.commons.messaging import Producer, Consumer
 from .di import configure_dependencies, get_producer, get_consumer
+from pika.exceptions import ChannelWrongStateError
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -162,38 +163,41 @@ def ticket():
 def subscribe_to_promotions(destination):
     """Subscribe to promotions for a specific destination using Server-Sent Events"""
     def generate():
+
+        routing_key = destination.lower().replace(" ", "_")
         # Normalize destination name
-        queue_name = f"{destination.lower()}_consumer_{uuid.uuid4().hex}"
 
-        exchange_name = f"{destination.lower()}_promotions_exchange"
+        consumer_id = uuid.uuid4().hex
 
-        consumer.exchange_declare(exchange_name, exchange_type="fanout")
+        queue_name = f"{routing_key}_consumer_{consumer_id}"
+
+        consumer.exchange_declare(config.PROMOTIONS_EXCHANGE, exchange_type="topic")
 
         consumer.queue_declare(queue_name)
 
-        consumer.queue_bind(queue_name, exchange_name)
+        consumer.queue_bind(queue_name, config.PROMOTIONS_EXCHANGE, routing_key)
         
-        logger.info(f"Client subscribed to promotions for {destination}")
+        logger.info(f"Client {consumer_id} subscribed to promotions for {destination}")
         
         try:
             while True:
                 method, props, body = consumer.basic_consume(queue_name)
                 if method:
-                    logger.info(f"Sending promotion to {destination}")
+                    logger.info(f"Sending promotion to {destination} for client {consumer_id}")
                     yield f"data: {body.decode()}\n\n"
                     consumer.channel.basic_ack(delivery_tag=method.delivery_tag)
                 else:
                     time.sleep(1)  # No message, wait a bit before checking again
                 
-        except GeneratorExit:
+        except (GeneratorExit, ChannelWrongStateError):
             logger.info(f"Client unsubscribed from {destination} promotions")
         except Exception as e:
             logger.error(f"Error in promotion stream for {destination}: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
         finally:
-            consumer.close()
             consumer.delete_queue(queue_name)
-            logger.info(f"Closed connection for {destination} promotion subscriber")
+            consumer.close()
+            logger.info(f"Closed connection for {destination} promotion subscriber {consumer_id}")
 
     # Use Flask's streaming response with correct SSE headers
     return Response(
