@@ -1,6 +1,6 @@
 import inject
 import json
-import threading
+from  threading import Thread, Lock
 import time
 from flask import Flask, request, jsonify
 from book_cruises.commons.utils import config, logger, cryptographer
@@ -24,25 +24,38 @@ class BookSvc:
         self.__repository = ItineraryRepository(database)
 
         self.__reservation_statuses = {}
+        self.__reservation_lock = Lock()
+
         self.__app = Flask(__name__)
         self.__app.add_url_rule(
-            "/create_reservation", view_func=self.create_reservation, methods=["POST"]
+            "/create_reservation", view_func=self.__create_reservation, methods=["POST"]
+        )
+        self.__app.add_url_rule(
+            "/payment/status", view_func=self.__get_payment_status, methods=["GET"]
         )
 
-        self.__thread_consumer = threading.Thread(
-            target=self.__consumer.start_consuming, daemon=True
-        )
-        self.__thread_web_server = threading.Thread(
-            target=self.__app.run,
-            kwargs={
-                "port": config.BOOK_SVC_WEB_SERVER_PORT,
-                "host": config.BOOK_SVC_WEB_SERVER_HOST,
-            },
+        self.__thread_consumer = Thread(
+            target=self.__target_thread_consumer
         )
 
-    def __update_reservation_status(self, reservation_id: str, status: str) -> None:
-        logger.info(f"Updating reservation status: {reservation_id} -> {status}")
-        self.__reservation_statuses[reservation_id] = status
+    def __add_new_reservation(self, reservation_id: str) -> None:
+        with self.__reservation_lock:
+            self.__reservation_statuses[reservation_id] = {
+                "payment": "waiting",
+                "ticket": "waiting",
+            }
+        logger.info(f"Added new reservation: {reservation_id}")
+
+    def __update_reservation_payment_status(self, reservation_id: str, status: str) -> None:
+        logger.debug(f"__reservation_statuses: {self.__reservation_statuses}")
+        with self.__reservation_lock:
+            self.__reservation_statuses[reservation_id]["payment"] = status
+        logger.info(f"Update reservation status: {reservation_id} -> {status}")
+
+    def __update_reservation_ticket_status(self, reservation_id: str, status: str) -> None:
+        with self.__reservation_lock:
+            self.__reservation_statuses[reservation_id]["ticket"] = status
+        logger.info(f"Update reservation status: {reservation_id} -> {status}")
 
     def __query_itinerary(self, itinerary_data: dict) -> list:
         try:
@@ -62,8 +75,7 @@ class BookSvc:
             logger.error(f"Failed to process message: {e}")
 
     def __process_ticket(self, payment_data: dict) -> None:
-        logger.info(f"Updating reservation status with ticket data: {payment_data}")
-        self.__update_reservation_status(
+        self.__update_reservation_ticket_status(
             payment_data["message"]["payment_data"]["reservation_id"], "ticket_generated"
         )
 
@@ -83,51 +95,63 @@ class BookSvc:
         match status:
             case "approved":
                 logger.info(f"Processing approved payment with data: {message}")
+                self.__update_reservation_payment_status(
+                    message["payment_data"]["reservation_id"], "approved"
+                )
             case "refused":
                 logger.error(f"Processing refused payment with data: {message}")
-                self.__update_reservation_status(
+                self.__update_reservation_payment_status(
                     message["payment_data"]["reservation_id"], "refused"
                 )
             case _:
                 logger.error(f"Unknown status: {status}")
 
-    def create_reservation(self):
+    def __create_reservation(self):
+        reservation_id = f"res-{int(time.time())}"  # Generate a unique reservation ID
+        reservation_data = {"reservation_id": reservation_id, **request.json}
+
+        # Store the reservation status
+        self.__add_new_reservation(reservation_id)
+
+        # Publish the reservation data to the RESERVE_CREATED_QUEUE
+        self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation_data)
+        logger.info(f"Published reservation {reservation_id} to {config.RESERVE_CREATED_QUEUE}")
+
+        return jsonify({"reservation_id": reservation_id}), 200
+
+    def __get_payment_status(self) -> None:
+        # Wait for a response from the queues
         try:
-            # Extract reservation data from the request
-            reservation_data = request.json
-            reservation_id = f"res-{int(time.time())}"  # Generate a unique reservation ID
-            reservation_data["reservation_id"] = reservation_id
+            reservation_id = request.args.get("reservation_id")
 
-            # Publish the reservation data to the RESERVE_CREATED_QUEUE
-            self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation_data)
-            logger.info(f"Published reservation {reservation_id} to {config.RESERVE_CREATED_QUEUE}")
+            if not reservation_id in self.__reservation_statuses:
+                return (jsonify({"status": "error", "message": "Reservation ID not found"}), 404)
 
-            # Wait for a response from the queues
-            timeout = 30  # Timeout in seconds
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                if reservation_id in self.__reservation_statuses:
-                    status = self.__reservation_statuses[reservation_id]
-                    if status == "approved":
-                        return (
-                            jsonify({"status": "approved", "message": "Reservation approved"}),
-                            200,
-                        )
-                    elif status == "refused":
-                        return jsonify({"status": "refused", "message": "Reservation refused"}), 400
-                    elif status == "ticket_generated":
-                        return (
-                            jsonify({"status": "ticket_generated", "message": "Ticket generated"}),
-                            200,
-                        )
-                time.sleep(1)
-
-            # If no response is received within the timeout, return a timeout error
-            return jsonify({"status": "timeout", "message": "No response received"}), 504
-
+            logger.debug(f"Payment status: {self.__reservation_statuses}")
+            payment_status = self.__reservation_statuses[reservation_id]["payment"]
+            match payment_status:
+                case "approved":
+                    return (
+                        jsonify({"status": "approved", "message": "Reservation approved"}),
+                        200,
+                    )
+                case "refused":
+                    return (jsonify({"status": "refused", "message": "Reservation refused"}), 400)
+                case "waiting":
+                    return (jsonify({"status": "waiting", "message": "Waiting for payment"}), 200)
+                case _:
+                    return (jsonify({"status": "error", "message": "Unknown status"}), 500)
         except Exception as e:
-            logger.error(f"Error creating reservation: {e}")
-            return jsonify({"status": "error", "message": "An error occurred"}), 500
+            logger.error(f"Failed to process message: {e}")
+            return (jsonify({"status": "error", "message": str(e)}), 500)
+
+    def __target_thread_consumer(self) -> None:
+        while True:
+            try:
+                self.__consumer.start_consuming()
+            except Exception as e:
+                logger.error(f"Error in thread_consumer: {e.with_traceback()}")
+                time.sleep(5)
 
     def run(self):
         logger.info("Book Service initialized")
@@ -159,7 +183,11 @@ class BookSvc:
         self.__consumer.register_callback(config.TICKET_GENERATED_QUEUE, self.__process_ticket)
 
         self.__thread_consumer.start()
-        self.__thread_web_server.start()
+        self.__app.run(
+            port=config.BOOK_SVC_WEB_SERVER_PORT,
+            host=config.BOOK_SVC_WEB_SERVER_HOST,
+            debug=config.DEBUG,
+        )
 
 
 def main() -> None:

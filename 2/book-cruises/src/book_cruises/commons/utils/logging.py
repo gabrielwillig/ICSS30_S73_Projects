@@ -35,7 +35,7 @@ class ColorFormatter(logging.Formatter):
         return formatted_message
 
 # Create a formatter
-formatter = ColorFormatter("%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s")
+formatter = ColorFormatter("%(asctime)s - %(levelname)s - %(filename)s:%(funcName)s:%(lineno)d - %(message)s")
 
 # Create a console handler
 console_handler = logging.StreamHandler()
