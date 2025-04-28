@@ -134,6 +134,25 @@ class BookSvc:
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
             return {"status": "error", "message": str(e)}
+    
+    def get_ticket_status(self, reservation_id):
+        # Wait for a response from the queues
+        try:
+            if not reservation_id in self.__reservation_statuses:
+                return {"status": "error", "message": "Reservation ID not found"}
+
+            logger.debug(f"Ticket status: {self.__reservation_statuses}")
+            ticket_status = self.__reservation_statuses[reservation_id]["ticket"]
+            match ticket_status:
+                case "ticket_generated":
+                    return {"status": "ticket_generated", "message": "Ticket generated"}
+                case "waiting":
+                    return {"status": "waiting", "message": "Waiting for ticket"}
+                case _:
+                    return {"status": "error", "message": "Unknown status"}
+        except Exception as e:
+            logger.error(f"Failed to process message: {e}")
+            return {"status": "error", "message": str(e)}
 
     def __target_consumer_thread(self) -> None:
         while True:
@@ -195,6 +214,14 @@ def create_flask_app(book_svc: BookSvc):
     def get_payment_status():
         reservation_id = request.args.get("reservation_id")
         result = book_svc.get_payment_status(reservation_id)
+        if result.get("status") == "error" and result.get("message") == "Reservation ID not found":
+            return jsonify(result), 404
+        return jsonify(result), 200
+
+    @app.route("/ticket/status", methods=["GET"])
+    def get_ticket_status():
+        reservation_id = request.args.get("reservation_id")
+        result = book_svc.get_ticket_status(reservation_id)
         if result.get("status") == "error" and result.get("message") == "Reservation ID not found":
             return jsonify(result), 404
         return jsonify(result), 200

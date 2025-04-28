@@ -5,27 +5,92 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Your Cruise Ticket</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #0056b3;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
 </head>
 <body class="bg-light">
   <div class="container py-5">
-    <div class="row justify-content-center">
-      <div class="col-md-6">
-        <div class="card shadow-sm">
-          <div class="card-header text-center bg-primary text-white">
-            <h2>Your Cruise Ticket</h2>
-          </div>
-          <div class="card-body text-center">
-            <p class="fw-bold">Trip ID:</p>
-            <h4 class="text-secondary mb-4">{{ trip_id }}</h4>
-            <p class="lead">Thank you for booking with us! Your ticket has been issued successfully.</p>
-            <a href="/" class="btn btn-primary mt-3">Return Home</a>
-          </div>
-          <div class="card-footer text-muted text-center">
-            Have a great trip!
+    <div id="loading" class="text-center">
+      <h1>Generating Your Ticket</h1>
+      <div class="spinner"></div>
+      <p>Please wait while we generate your ticket...</p>
+    </div>
+    <div id="ticket" class="hidden">
+      <div class="row justify-content-center">
+        <div class="col-md-6">
+          <div class="card shadow-sm">
+            <div class="card-header text-center bg-primary text-white">
+              <h2>Your Cruise Ticket</h2>
+            </div>
+            <div class="card-body text-center">
+              <p class="fw-bold">Trip ID:</p>
+              <h4 class="text-secondary mb-4" id="trip-id"></h4>
+              <p class="lead">Thank you for booking with us! Your ticket has been issued successfully.</p>
+              <a href="/" class="btn btn-primary mt-3">Return Home</a>
+            </div>
+            <div class="card-footer text-muted text-center">
+              Have a great trip!
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
+
+  <script>
+    let pollingActive = true; // Variable to control polling
+
+    // Poll ticket status periodically
+    function checkTicketStatus() {
+        if (!pollingActive) return; // Stop polling if inactive
+
+        fetch('/ticket/status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ticket_generated') {
+                    // Stop polling immediately
+                    pollingActive = false;
+
+                    // Hide loading and show ticket
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('ticket').classList.remove('hidden');
+                    document.getElementById('trip-id').textContent = data.ticket_data.trip_id;
+                } else if (data.status === 'processing') {
+                    // Continue polling if still processing
+                    setTimeout(checkTicketStatus, 1000);
+                } else {
+                    console.error('Unexpected ticket status:', data.status);
+                }
+            })
+            .catch(error => {
+                console.error('Error checking ticket status:', error);
+                // Retry after a delay in case of error
+                if (pollingActive) {
+                    setTimeout(checkTicketStatus, 2000);
+                }
+            });
+    }
+
+    // Start polling when the page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        checkTicketStatus();
+    });
+  </script>
 </body>
 </html>

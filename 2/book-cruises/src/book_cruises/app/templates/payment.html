@@ -74,13 +74,6 @@
         <p>Total: ${{ price }} for {{ passengers }} passenger{% if passengers|int > 1 %}s{% endif %}</p>
     </div>
     
-    <div id="success" class="success hidden">
-        <h1>Payment Successful!</h1>
-        <p>Thank you for purchasing! ID {{ payment_id }}.</p>
-        <p>Your booking includes {{ passengers }} passenger{% if passengers|int > 1 %}s{% endif %}.</p>
-        <a href="/ticket?payment_id={{ payment_id }}">View My Ticket</a>
-    </div>
-    
     <div id="error" class="error hidden">
         <h1>Payment Failed</h1>
         <p>We're sorry, but there was an issue processing your payment! ID {{ payment_id }}.</p>
@@ -98,13 +91,17 @@
                         // Continue checking if still processing
                         setTimeout(checkPaymentStatus, 1000);
                     } else if (data.status === 'approved') {
-                        // Show success message
-                        document.getElementById('loading').classList.add('hidden');
-                        document.getElementById('success').classList.remove('hidden');
+                        // Redirect to ticket page to wait for ticket generation
+                        window.location.href = '/ticket';
                     } else if (data.status === 'refused') {
                         // Show error message
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('error').classList.remove('hidden');
+                    } else {
+                        // Handle unexpected status
+                        console.error('Unexpected payment status:', data.status);
+                        // Retry after a delay
+                        setTimeout(checkPaymentStatus, 2000);
                     }
                 })
                 .catch(error => {

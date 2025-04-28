@@ -183,15 +183,50 @@ def payment_status():
 
     return jsonify({"status": "processing"}), 200
 
-
 @app.route("/ticket", methods=["GET"])
 def ticket():
-    try:
-        trip_id = session.get("payment_id")
-        return render_template("ticket.html", trip_id=trip_id)
-    except Exception as e:
-        logger.error(f"Failed to display ticket: {e}")
-        return render_template("error.html", message="Unable to display your ticket."), 500
+    """Render the ticket page to wait for ticket generation"""
+    reservation_id = session.get("reservation_id")
+    if not reservation_id:
+        return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
+
+    # Render the ticket.html template, which will handle polling for ticket status
+    return render_template("ticket.html")
+
+@app.route("/ticket/status", methods=["GET"])
+def ticket_status():
+    """Endpoint to check the ticket generation status and render the result"""
+    reservation_id = session.get("reservation_id")
+    if not reservation_id:
+        return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
+
+    timeout_limit = 30  # Timeout after 30 seconds
+    start_time = time.time()
+
+    while time.time() - start_time < timeout_limit:
+        try:
+            response = requests.get(
+                f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/ticket/status",
+                params={"reservation_id": reservation_id},
+                timeout=5,
+            )
+            ticket_status = response.json().get("status")
+            logger.info(f"Ticket status for {reservation_id}: {ticket_status}")
+
+            if ticket_status == "ticket_generated":
+                return jsonify({"status": "ticket_generated"}), 200
+
+            elif ticket_status == "error":
+                return jsonify({"status": "error", "message": "Error in generating ticket"}), 500
+
+        except requests.RequestException as e:
+            logger.error(f"Error checking ticket status: {e}")
+            return jsonify({"status": "error", "message" : "Unable to check ticket status."}), 500
+
+        time.sleep(1)  # Wait 1 second before polling again
+
+    # If timeout occurs
+    return jsonify({"status": "error", "message": "Ticket generation timed out."}), 504
 
 
 @app.route("/subscribe/<destination>")
