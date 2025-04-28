@@ -1,10 +1,9 @@
 import inject
-import json
 import random
 import time
 import threading
-from datetime import datetime, timedelta, date
-from book_cruises.commons.utils import config, logger
+from datetime import datetime, date
+from book_cruises.commons.utils import logger, config
 from book_cruises.commons.messaging import Producer
 from book_cruises.commons.database import Database
 from .di import configure_dependencies  
@@ -17,7 +16,6 @@ class MarketingSvc:
         self.__running = False
         self.__promotion_thread = None
         self.__destinations = []
-        self.__active_exchanges = []  # Track created queues for cleanup
     
     def __get_available_destinations(self):
         """Fetch unique destinations from database"""
@@ -98,39 +96,32 @@ class MarketingSvc:
                 
                 # Generate promotion
                 promotion = self.__generate_promotion(destination)
+
+                routing_key = destination.lower().replace(" ", "_")
                 
                 if promotion:
-                    exchange_name = f"{destination.lower()}_promotions_exchange"
                     # Publish to destination-specific queue
                     logger.info(f"Publishing promotion for {destination}: {promotion['discount']}% off")
-                    self.__producer.exchange_publish(
-                        exchange_name,
-                        promotion
+                    self.__producer.publish(
+                        routing_key=routing_key,
+                        message=promotion,
+                        exchange=config.PROMOTIONS_EXCHANGE
                     )
                 
             # Wait before generating next promotion (5-15 seconds)
             time.sleep(random.uniform(5, 15))
 
-    def __delete_exchanges(self):
+    def __delete_exchange(self):
         """Purge all promotion queues created by this service"""
-        if not self.__active_exchanges:
-            return
-            
-        logger.info(f"Purging {len(self.__active_exchanges)} promotion exchanges")
-        
         # Ensure channel is ready
         self.__producer._ensure_channel()
         
-        # Purge each exchange
-        for exchange_name in self.__active_exchanges:
-            try:
-                logger.info(f"Deleting exchange: {exchange_name}")
-                self.__producer.channel.exchange_delete(exchange=exchange_name)
-            except Exception as e:
-                logger.error(f"Error purging queue {exchange_name}: {e}")
+        try:
+            logger.info(f"Deleting marketing exchange: {config.PROMOTIONS_EXCHANGE}")
+            self.__producer.channel.exchange_delete(exchange=config.PROMOTIONS_EXCHANGE)
+        except Exception as e:
+            logger.error(f"Error deleting exchange {config.PROMOTIONS_EXCHANGE}: {e}")
         
-        logger.info("All promotion exchanges deleted")
-
     def run(self):
         """Start the marketing service"""
         logger.info("Marketing Service initialized")
@@ -142,14 +133,9 @@ class MarketingSvc:
         self.__get_available_destinations()
         
         # Declare a queue for each destination
-        self.__active_exchanges = []  # Reset active queues
-        for destination in self.__destinations:
-            exchange_name = f"{destination.lower()}_promotions_exchange"
-            # Use connection directly to declare the queue
-            self.__producer._ensure_channel()
-            self.__producer.channel.exchange_declare(exchange=exchange_name, exchange_type="fanout")
-            logger.info(f"Declared promotion exchange: {exchange_name}")
-            self.__active_exchanges.append(exchange_name)
+        self.__producer._ensure_channel()
+        self.__producer.channel.exchange_declare(exchange=config.PROMOTIONS_EXCHANGE, exchange_type="topic")
+        logger.info(f"Declared promotion exchange: {config.PROMOTIONS_EXCHANGE}")
         
         # Start promotion generator thread
         self.__running = True
@@ -168,7 +154,7 @@ class MarketingSvc:
                 self.__promotion_thread.join(timeout=2)
             
             # Clean up by purging all promotion queues
-            self.__delete_exchanges()
+            self.__delete_exchange()
             logger.info("Marketing Service shutdown complete")
 
 
