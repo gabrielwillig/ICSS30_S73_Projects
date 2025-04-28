@@ -114,9 +114,6 @@ def payment_status():
     if not reservation_id:
         return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
 
-    # Sleep for 5-10 seconds to simulate payment processing
-    time.sleep(random.uniform(5, 10))
-
     try:
         response = requests.get(
             f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/payment/status",
@@ -151,9 +148,6 @@ def ticket_status():
     reservation_id = session.get("reservation_id")
     if not reservation_id:
         return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
-
-    # Sleep for 5-10 seconds to simulate payment processing
-    time.sleep(random.uniform(5, 10))
 
     try:
         response = requests.get(

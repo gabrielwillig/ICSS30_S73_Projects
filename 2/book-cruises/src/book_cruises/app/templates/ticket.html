@@ -87,9 +87,9 @@
             });
     }
 
-    // Start polling when the page loads
+    // Start polling with a delay to simulate latency
     document.addEventListener('DOMContentLoaded', function() {
-        checkTicketStatus();
+        setTimeout(checkTicketStatus, 5000); // Add a 2-second delay before the first request
     });
   </script>
 </body>

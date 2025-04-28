@@ -91,10 +91,16 @@
                         // Continue checking if still processing
                         setTimeout(checkPaymentStatus, 1000);
                     } else if (data.status === 'approved') {
-                        // Redirect to ticket page to wait for ticket generation
-                        window.location.href = '/ticket';
+                        // Show "Payment Approved" message briefly before redirecting
+                        document.getElementById('loading').innerHTML = `
+                            <h1>Payment Approved</h1>
+                            <p>Your payment has been successfully processed. Redirecting to your ticket...</p>
+                        `;
+                        setTimeout(() => {
+                            window.location.href = '/ticket'; // Redirect to ticket page
+                        }, 3000); // 3-second delay
                     } else if (data.status === 'refused') {
-                        // Show error message
+                        // Show "Payment Refused" message briefly
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('error').classList.remove('hidden');
                     } else {
@@ -110,11 +116,10 @@
                     setTimeout(checkPaymentStatus, 2000);
                 });
         }
-        
-        // Start checking status when page loads
+
+        // Start checking status with a delay to simulate latency
         document.addEventListener('DOMContentLoaded', function() {
-            // Initial status check
-            setTimeout(checkPaymentStatus, 1000);
+            setTimeout(checkPaymentStatus, 5000); // Add a 5-second delay before the first request
         });
     </script>
 </body>
