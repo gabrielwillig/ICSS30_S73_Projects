@@ -1,6 +1,6 @@
 import inject
 import json
-from  threading import Thread, Lock
+from threading import Thread, Lock
 import time
 from flask import Flask, request, jsonify
 from book_cruises.commons.utils import config, logger, cryptographer
@@ -26,13 +26,7 @@ class BookSvc:
         self.__reservation_statuses = {}
         self.__reservation_lock = Lock()
 
-        self.__app = Flask(__name__)
-        self.__app.add_url_rule(
-            "/create_reservation", view_func=self.__create_reservation, methods=["POST"]
-        )
-        self.__app.add_url_rule(
-            "/payment/status", view_func=self.__get_payment_status, methods=["GET"]
-        )
+        self.__first_time = True
 
         self.__thread_consumer = Thread(
             target=self.__target_thread_consumer
@@ -80,6 +74,7 @@ class BookSvc:
         )
 
     def __process_payment(self, payment_data: dict) -> None:
+        logger.info(f"instance id {id(self)}")
         signature_is_valid = cryptographer.verify_signature(
             payment_data["message"],
             payment_data["signature"],
@@ -106,44 +101,42 @@ class BookSvc:
             case _:
                 logger.error(f"Unknown status: {status}")
 
-    def __create_reservation(self):
+    def create_reservation(self, reservation_data):
         reservation_id = f"res-{int(time.time())}"  # Generate a unique reservation ID
-        reservation_data = {"reservation_id": reservation_id, **request.json}
+        reservation_data = {"reservation_id": reservation_id, **reservation_data}
 
         # Store the reservation status
         self.__add_new_reservation(reservation_id)
 
         # Publish the reservation data to the RESERVE_CREATED_QUEUE
         self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation_data)
+        if self.__first_time:
+            self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation_data)
+            self.__first_time = False
         logger.info(f"Published reservation {reservation_id} to {config.RESERVE_CREATED_QUEUE}")
 
-        return jsonify({"reservation_id": reservation_id}), 200
+        return {"reservation_id": reservation_id}
 
-    def __get_payment_status(self) -> None:
+    def get_payment_status(self, reservation_id):
         # Wait for a response from the queues
         try:
-            reservation_id = request.args.get("reservation_id")
-
             if not reservation_id in self.__reservation_statuses:
-                return (jsonify({"status": "error", "message": "Reservation ID not found"}), 404)
+                return {"status": "error", "message": "Reservation ID not found"}
 
             logger.debug(f"Payment status: {self.__reservation_statuses}")
             payment_status = self.__reservation_statuses[reservation_id]["payment"]
             match payment_status:
                 case "approved":
-                    return (
-                        jsonify({"status": "approved", "message": "Reservation approved"}),
-                        200,
-                    )
+                    return {"status": "approved", "message": "Reservation approved"}
                 case "refused":
-                    return (jsonify({"status": "refused", "message": "Reservation refused"}), 400)
+                    return {"status": "refused", "message": "Reservation refused"}
                 case "waiting":
-                    return (jsonify({"status": "waiting", "message": "Waiting for payment"}), 200)
+                    return {"status": "waiting", "message": "Waiting for payment"}
                 case _:
-                    return (jsonify({"status": "error", "message": "Unknown status"}), 500)
+                    return {"status": "error", "message": "Unknown status"}
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
-            return (jsonify({"status": "error", "message": str(e)}), 500)
+            return {"status": "error", "message": str(e)}
 
     def __target_thread_consumer(self) -> None:
         while True:
@@ -181,17 +174,47 @@ class BookSvc:
             config.APPROVED_PAYMENT_BOOK_SVC_QUEUE, self.__process_payment
         )
         self.__consumer.register_callback(config.TICKET_GENERATED_QUEUE, self.__process_ticket)
-
+        logger.info(f"Instance id {id(self)}")
+        
         self.__thread_consumer.start()
-        self.__app.run(
-            port=config.BOOK_SVC_WEB_SERVER_PORT,
-            host=config.BOOK_SVC_WEB_SERVER_HOST,
-            debug=config.DEBUG,
-        )
+
+
+def create_flask_app(book_svc: BookSvc):
+    app = Flask(__name__)
+    
+    @app.route("/create_reservation", methods=["POST"])
+    def create_reservation():
+        result = book_svc.create_reservation(request.json)
+        return jsonify(result), 200
+    
+    @app.route("/payment/status", methods=["GET"])
+    def get_payment_status():
+        reservation_id = request.args.get("reservation_id")
+        result = book_svc.get_payment_status(reservation_id)
+        if result.get("status") == "error" and result.get("message") == "Reservation ID not found":
+            return jsonify(result), 404
+        return jsonify(result), 200
+    
+    return app
 
 
 def main() -> None:
     configure_dependencies()
 
     book_svc = BookSvc()
-    book_svc.run()
+    
+    # Start the BookSvc in a separate thread
+    book_thread = Thread(target=book_svc.run)
+    book_thread.start()
+    
+    # Create and run the Flask app
+    app = create_flask_app(book_svc)
+    app.run(
+        port=config.BOOK_SVC_WEB_SERVER_PORT,
+        host=config.BOOK_SVC_WEB_SERVER_HOST,
+        debug=config.DEBUG,
+    )
+
+
+if __name__ == "__main__":
+    main()
