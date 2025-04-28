@@ -2,6 +2,7 @@ import json
 import random
 import time
 import threading
+from threading import Lock
 import requests
 import uuid
 from flask import Flask, render_template, request, session, jsonify, Response, stream_with_context
@@ -18,11 +19,9 @@ configure_dependencies()
 producer: Producer = get_producer()
 consumer: Consumer = get_consumer()
 
-# Simple in-memory reservation tracking
-reservation_statuses = {
-    "payment": {},  # payment_id -> status
-    "ticket": {},  # reservation_id -> status
-}
+# Add this at the module level
+payment_statuses = {}
+payment_status_lock = Lock()
 
 
 def wait_payment(reservation_id: str):
@@ -46,20 +45,19 @@ def wait_payment(reservation_id: str):
             logger.info(f"Payment status for {reservation_id}: {payment_status}")
 
             if payment_status in ["approved", "refused"]:
-                # Update the reservation status
-                reservation_statuses["payment"][reservation_id] = payment_status
+                with payment_status_lock:
+                    payment_statuses[reservation_id] = payment_status
                 break
         except requests.RequestException as e:
             logger.error(f"Error checking payment status: {e}")
         time.sleep(1)
     else:
         # If the loop finishes without breaking (i.e., timeout occurred)
+        with payment_status_lock:
+            payment_statuses[reservation_id] = "timeout"
         raise TimeoutError(
             f"Payment status check for reservation {reservation_id} timed out after {timeout_limit} seconds."
         )
-
-    # Update payment status to "approved" or "refused" dict
-    raise NotImplementedError("Payment processing not implemented yet")
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -118,9 +116,6 @@ def payment():
         )
         payment_info = payment_obj.dict()
 
-        # Set initial payment status to "processing"
-        reservation_statuses["payment"].update({payment_id: payment_obj.status})
-
         # Make API call to create reservation
         response = requests.post(
             f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/create_reservation",
@@ -133,6 +128,11 @@ def payment():
         session["payment_info"] = payment_info
         session["payment_id"] = payment_id
         session["reservation_id"] = reservation_id
+        session["payment_status"] = "processing"
+
+        # Initialize the shared dictionary
+        with payment_status_lock:
+            payment_statuses[reservation_id] = "processing"
 
         # Log payment process start
         logger.info(
@@ -163,13 +163,25 @@ def payment():
 @app.route("/payment/status", methods=["GET"])
 def payment_status():
     """Endpoint to check the current payment status"""
-    payment_id = session.get("payment_id")
+    reservation_id = session.get("reservation_id")
+    if not reservation_id:
+        return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
 
-    payment_statuses = reservation_statuses["payment"]
+    # First check the session
+    status = session.get("payment_status")
+    if status in ["approved", "refused"]:
+        return jsonify({"status": status}), 200
 
-    if not payment_id or payment_id not in reservation_statuses["payment"]:
-        return jsonify({"status": "unknown"})
-    return jsonify({"status": payment_statuses[payment_id]})
+    # Then check the shared dictionary
+    with payment_status_lock:
+        status = payment_statuses.get(reservation_id)
+
+    if status:
+        # Update the session if we found a status in the shared dict
+        session["payment_status"] = status
+        return jsonify({"status": status}), 200
+
+    return jsonify({"status": "processing"}), 200
 
 
 @app.route("/ticket", methods=["GET"])

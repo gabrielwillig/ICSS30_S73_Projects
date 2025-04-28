@@ -97,11 +97,11 @@
                     if (data.status === 'processing') {
                         // Continue checking if still processing
                         setTimeout(checkPaymentStatus, 1000);
-                    } else if (data.status === 'success') {
+                    } else if (data.status === 'approved') {
                         // Show success message
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('success').classList.remove('hidden');
-                    } else if (data.status === 'error') {
+                    } else if (data.status === 'refused') {
                         // Show error message
                         document.getElementById('loading').classList.add('hidden');
                         document.getElementById('error').classList.remove('hidden');
