@@ -64,6 +64,88 @@
         .hidden {
             display: none;
         }
+        .success h1 {
+            color: #28a745;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+        .success p {
+            font-size: 1.2rem;
+            color: #333;
+        }
+        .checkmark {
+            width: 80px;
+            height: 80px;
+            margin: 20px auto;
+            position: relative;
+        }
+        .checkmark-circle {
+            width: 80px;
+            height: 80px;
+            border: 5px solid #28a745;
+            border-radius: 50%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            animation: circle-animation 0.5s ease-in-out forwards;
+        }
+        .checkmark-stem {
+            width: 5px;
+            height: 30px;
+            background-color: #28a745;
+            position: absolute;
+            top: 25px;
+            left: 35px;
+            transform: rotate(45deg);
+            animation: stem-animation 0.3s ease-in-out 0.5s forwards;
+            opacity: 0;
+        }
+        .checkmark-kick {
+            width: 5px;
+            height: 15px;
+            background-color: #28a745;
+            position: absolute;
+            top: 45px;
+            left: 50px;
+            transform: rotate(-45deg);
+            animation: kick-animation 0.3s ease-in-out 0.5s forwards;
+            opacity: 0;
+        }
+        @keyframes circle-animation {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+        @keyframes stem-animation {
+            0% { opacity: 0; transform: scale(0); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes kick-animation {
+            0% { opacity: 0; transform: scale(0); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .error h1 {
+            color: #dc3545;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+        .error p {
+            font-size: 1.2rem;
+            color: #333;
+        }
+        .btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #0056b3;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        .btn:hover {
+            background-color: #003d80;
+        }
     </style>
 </head>
 <body>
@@ -93,8 +175,15 @@
                     } else if (data.status === 'approved') {
                         // Show "Payment Approved" message briefly before redirecting
                         document.getElementById('loading').innerHTML = `
-                            <h1>Payment Approved</h1>
-                            <p>Your payment has been successfully processed. Redirecting to your ticket...</p>
+                            <div class="success">
+                                <h1>🎉 Payment Approved!</h1>
+                                <p>Your payment has been successfully processed. Redirecting to your ticket...</p>
+                                <div class="checkmark">
+                                    <div class="checkmark-circle"></div>
+                                    <div class="checkmark-stem"></div>
+                                    <div class="checkmark-kick"></div>
+                                </div>
+                            </div>
                         `;
                         setTimeout(() => {
                             window.location.href = '/ticket'; // Redirect to ticket page
@@ -102,6 +191,14 @@
                     } else if (data.status === 'refused') {
                         // Show "Payment Refused" message briefly
                         document.getElementById('loading').classList.add('hidden');
+                        document.getElementById('error').innerHTML = `
+                            <div class="error">
+                                <h1>❌ Payment Refused</h1>
+                                <p>We're sorry, but there was an issue processing your payment.</p>
+                                <p>Please try again or contact support if the issue persists.</p>
+                                <a href="/" class="btn">Back to Home</a>
+                            </div>
+                        `;
                         document.getElementById('error').classList.remove('hidden');
                     } else {
                         // Handle unexpected status

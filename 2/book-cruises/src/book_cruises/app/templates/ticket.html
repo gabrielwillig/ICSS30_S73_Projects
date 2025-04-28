@@ -6,12 +6,45 @@
     <title>Your Cruise Ticket</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        body {
+            background: linear-gradient(to bottom, #0056b3, #007bff);
+            color: #fff;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .card-header {
+            background: #0056b3;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .card-body {
+            background: #f8f9fa;
+            color: #333;
+        }
+        .card-footer {
+            background: #e9ecef;
+            color: #555;
+        }
+        .btn-primary {
+            background: #0056b3;
+            border: none;
+        }
+        .btn-primary:hover {
+            background: #003d80;
+        }
         .spinner {
             border: 4px solid rgba(0, 0, 0, 0.1);
-            width: 36px;
-            height: 36px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            border-left-color: #0056b3;
+            border-left-color: #fff;
             animation: spin 1s linear infinite;
             margin: 20px auto;
         }
@@ -22,10 +55,18 @@
         .hidden {
             display: none;
         }
+        .ticket-details {
+            font-size: 1.2rem;
+            margin-top: 20px;
+        }
+        .ticket-details span {
+            font-weight: bold;
+            color: #0056b3;
+        }
     </style>
 </head>
-<body class="bg-light">
-  <div class="container py-5">
+<body>
+  <div class="container">
     <div id="loading" class="text-center">
       <h1>Generating Your Ticket</h1>
       <div class="spinner"></div>
@@ -33,18 +74,24 @@
     </div>
     <div id="ticket" class="hidden">
       <div class="row justify-content-center">
-        <div class="col-md-6">
-          <div class="card shadow-sm">
-            <div class="card-header text-center bg-primary text-white">
-              <h2>Your Cruise Ticket</h2>
+        <div class="col-md-8">
+          <div class="card shadow-lg">
+            <div class="card-header text-center">
+              Your Cruise Ticket
             </div>
             <div class="card-body text-center">
               <p class="fw-bold">Trip ID:</p>
               <h4 class="text-secondary mb-4" id="trip-id"></h4>
+              <div class="ticket-details">
+                <p><span>Passenger Name:</span> John Doe</p>
+                <p><span>Destination:</span> Bahamas</p>
+                <p><span>Departure Date:</span> 2025-05-01</p>
+                <p><span>Cabin:</span> Ocean View Suite</p>
+              </div>
               <p class="lead">Thank you for booking with us! Your ticket has been issued successfully.</p>
               <a href="/" class="btn btn-primary mt-3">Return Home</a>
             </div>
-            <div class="card-footer text-muted text-center">
+            <div class="card-footer text-center">
               Have a great trip!
             </div>
           </div>
@@ -71,6 +118,15 @@
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('ticket').classList.remove('hidden');
                     document.getElementById('trip-id').textContent = data.ticket_data.trip_id;
+
+                    // Dynamically populate ticket details (if available in the response)
+                    // Example:
+                    // document.querySelector('.ticket-details').innerHTML = `
+                    //     <p><span>Passenger Name:</span> ${data.ticket_data.passenger_name}</p>
+                    //     <p><span>Destination:</span> ${data.ticket_data.destination}</p>
+                    //     <p><span>Departure Date:</span> ${data.ticket_data.departure_date}</p>
+                    //     <p><span>Cabin:</span> ${data.ticket_data.cabin}</p>
+                    // `;
                 } else if (data.status === 'processing') {
                     // Continue polling if still processing
                     setTimeout(checkTicketStatus, 1000);
