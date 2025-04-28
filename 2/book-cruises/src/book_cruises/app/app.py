@@ -144,7 +144,7 @@ def ticket():
 
 @app.route("/ticket/status", methods=["GET"])
 def ticket_status():
-    """Endpoint to check the ticket generation status and render the result"""
+    """Endpoint to check the ticket generation status and return ticket details"""
     reservation_id = session.get("reservation_id")
     if not reservation_id:
         return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
@@ -159,8 +159,15 @@ def ticket_status():
         logger.info(f"Ticket status for {reservation_id}: {ticket_status}")
 
         if ticket_status == "ticket_generated":
+            ticket_data = response.json().get("ticket_data", {})
             session["ticket_status"] = ticket_status
-            return jsonify({"status": "ticket_generated"}), 200
+            return jsonify({
+                "status": "ticket_generated",
+                "ticket_data": ticket_data
+            }), 200
+
+        elif ticket_status == "processing":
+            return jsonify({"status": "processing"}), 200
 
         elif ticket_status == "error":
             return jsonify({"status": "error", "message": "Error in generating ticket"}), 500

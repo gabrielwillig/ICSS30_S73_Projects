@@ -117,16 +117,16 @@
                     // Hide loading and show ticket
                     document.getElementById('loading').classList.add('hidden');
                     document.getElementById('ticket').classList.remove('hidden');
-                    document.getElementById('trip-id').textContent = data.ticket_data.trip_id;
 
-                    // Dynamically populate ticket details (if available in the response)
-                    // Example:
-                    // document.querySelector('.ticket-details').innerHTML = `
-                    //     <p><span>Passenger Name:</span> ${data.ticket_data.passenger_name}</p>
-                    //     <p><span>Destination:</span> ${data.ticket_data.destination}</p>
-                    //     <p><span>Departure Date:</span> ${data.ticket_data.departure_date}</p>
-                    //     <p><span>Cabin:</span> ${data.ticket_data.cabin}</p>
-                    // `;
+                    // Populate ticket details dynamically
+                    const ticketData = data.ticket_data;
+                    document.getElementById('trip-id').textContent = ticketData.trip_id || "N/A";
+                    document.querySelector('.ticket-details').innerHTML = `
+                        <p><span>Passenger Name:</span> ${ticketData.passenger_name || "N/A"}</p>
+                        <p><span>Destination:</span> ${ticketData.destination || "N/A"}</p>
+                        <p><span>Departure Date:</span> ${ticketData.departure_date || "N/A"}</p>
+                        <p><span>Cabin:</span> ${ticketData.cabin || "N/A"}</p>
+                    `;
                 } else if (data.status === 'processing') {
                     // Continue polling if still processing
                     setTimeout(checkTicketStatus, 1000);
