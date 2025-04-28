@@ -27,10 +27,7 @@ class BookSvc:
         self.__reservation_lock = Lock()
 
         self.__first_time = True
-
-        self.__thread_consumer = Thread(
-            target=self.__target_thread_consumer
-        )
+        self.__thread_consumer = None
 
     def __add_new_reservation(self, reservation_id: str) -> None:
         with self.__reservation_lock:
@@ -138,7 +135,7 @@ class BookSvc:
             logger.error(f"Failed to process message: {e}")
             return {"status": "error", "message": str(e)}
 
-    def __target_thread_consumer(self) -> None:
+    def __target_consumer_thread(self) -> None:
         while True:
             try:
                 self.__consumer.start_consuming()
@@ -146,8 +143,11 @@ class BookSvc:
                 logger.error(f"Error in thread_consumer: {e.with_traceback()}")
                 time.sleep(5)
 
-    def run(self):
-        logger.info("Book Service initialized")
+    def __start_consumer_thread(self) -> None:
+        self.__thread_consumer = Thread(target=self.__target_consumer_thread)
+        self.__thread_consumer.start()
+
+    def __config_broker(self) -> None:
         self.__consumer.exchange_declare(config.APP_EXCHANGE, "direct", durable=False)
 
         self.__consumer.queue_declare(config.QUERY_RESERVATION_QUEUE, durable=False)
@@ -168,6 +168,10 @@ class BookSvc:
             routing_key=config.APPROVED_PAYMENT_ROUTING_KEY,
         )
 
+    def run(self):
+        logger.info("Book Service initialized")
+        self.__config_broker()
+
         self.__consumer.register_callback(config.QUERY_RESERVATION_QUEUE, self.__query_itinerary)
         self.__consumer.register_callback(config.REFUSED_PAYMENT_QUEUE, self.__process_payment)
         self.__consumer.register_callback(
@@ -175,18 +179,18 @@ class BookSvc:
         )
         self.__consumer.register_callback(config.TICKET_GENERATED_QUEUE, self.__process_ticket)
         logger.info(f"Instance id {id(self)}")
-        
-        self.__thread_consumer.start()
+
+        self.__start_consumer_thread()
 
 
 def create_flask_app(book_svc: BookSvc):
     app = Flask(__name__)
-    
+
     @app.route("/create_reservation", methods=["POST"])
     def create_reservation():
         result = book_svc.create_reservation(request.json)
         return jsonify(result), 200
-    
+
     @app.route("/payment/status", methods=["GET"])
     def get_payment_status():
         reservation_id = request.args.get("reservation_id")
@@ -194,7 +198,7 @@ def create_flask_app(book_svc: BookSvc):
         if result.get("status") == "error" and result.get("message") == "Reservation ID not found":
             return jsonify(result), 404
         return jsonify(result), 200
-    
+
     return app
 
 
@@ -202,11 +206,8 @@ def main() -> None:
     configure_dependencies()
 
     book_svc = BookSvc()
-    
-    # Start the BookSvc in a separate thread
-    book_thread = Thread(target=book_svc.run)
-    book_thread.start()
-    
+    book_svc.run()
+
     # Create and run the Flask app
     app = create_flask_app(book_svc)
     app.run(
