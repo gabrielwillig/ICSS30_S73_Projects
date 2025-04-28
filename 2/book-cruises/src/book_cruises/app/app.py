@@ -1,8 +1,6 @@
 import json
 import random
 import time
-import threading
-from threading import Lock
 import requests
 import uuid
 from flask import Flask, render_template, request, session, jsonify, Response, stream_with_context
@@ -18,46 +16,6 @@ app.secret_key = "sistemas-distribuidos"  # Add a secret key for sessions
 configure_dependencies()
 producer: Producer = get_producer()
 consumer: Consumer = get_consumer()
-
-# Add this at the module level
-payment_statuses = {}
-payment_status_lock = Lock()
-
-
-def wait_payment(reservation_id: str):
-    """Background task to wait for payment processing"""
-    logger.info(f"Started payment processing for reserve {reservation_id}")
-
-    # Sleep for 5-10 seconds to simulate payment processing
-    time.sleep(random.uniform(5, 10))
-
-    # Do pooling to check payment status
-    timeout_limit = 30
-    start_time = time.time()
-    while time.time() - start_time < timeout_limit:
-        try:
-            response = requests.get(
-                f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/payment/status",
-                params={"reservation_id": reservation_id},
-                timeout=5,
-            )
-            payment_status = response.json().get("status")
-            logger.info(f"Payment status for {reservation_id}: {payment_status}")
-
-            if payment_status in ["approved", "refused"]:
-                with payment_status_lock:
-                    payment_statuses[reservation_id] = payment_status
-                break
-        except requests.RequestException as e:
-            logger.error(f"Error checking payment status: {e}")
-        time.sleep(1)
-    else:
-        # If the loop finishes without breaking (i.e., timeout occurred)
-        with payment_status_lock:
-            payment_statuses[reservation_id] = "timeout"
-        raise TimeoutError(
-            f"Payment status check for reservation {reservation_id} timed out after {timeout_limit} seconds."
-        )
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -129,23 +87,12 @@ def payment():
         session["payment_id"] = payment_id
         session["reservation_id"] = reservation_id
         session["payment_status"] = "processing"
-
-        # Initialize the shared dictionary
-        with payment_status_lock:
-            payment_statuses[reservation_id] = "processing"
+        session["ticket_status"] = "processing"
 
         # Log payment process start
         logger.info(
             f"Started payment process ID {payment_id} of reservation_id {reservation_id} with price ${price} for {passengers} passengers"
         )
-
-        # Start background thread to wait for payment
-        payment_thread = threading.Thread(
-            target=wait_payment,
-            args=(reservation_id,),
-            daemon=True,
-        )
-        payment_thread.start()
 
         # Return the payment processing page with initial "processing" status
         return render_template(
@@ -167,21 +114,25 @@ def payment_status():
     if not reservation_id:
         return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
 
-    # First check the session
-    status = session.get("payment_status")
-    if status in ["approved", "refused"]:
-        return jsonify({"status": status}), 200
+    # Sleep for 5-10 seconds to simulate payment processing
+    time.sleep(random.uniform(5, 10))
 
-    # Then check the shared dictionary
-    with payment_status_lock:
-        status = payment_statuses.get(reservation_id)
+    try:
+        response = requests.get(
+            f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/payment/status",
+            params={"reservation_id": reservation_id},
+            timeout=5,
+        )
+        payment_status = response.json().get("status")
+        logger.info(f"Payment status for {reservation_id}: {payment_status}")
 
-    if status:
-        # Update the session if we found a status in the shared dict
-        session["payment_status"] = status
-        return jsonify({"status": status}), 200
+        if payment_status in ["approved", "refused"]:
+            session["payment_status"] = payment_status
+            return jsonify({"status": payment_status}), 200
+    except requests.RequestException as e:
+        logger.error(f"Error checking payment status: {e}")
+    time.sleep(1)
 
-    return jsonify({"status": "processing"}), 200
 
 @app.route("/ticket", methods=["GET"])
 def ticket():
@@ -193,6 +144,7 @@ def ticket():
     # Render the ticket.html template, which will handle polling for ticket status
     return render_template("ticket.html")
 
+
 @app.route("/ticket/status", methods=["GET"])
 def ticket_status():
     """Endpoint to check the ticket generation status and render the result"""
@@ -200,33 +152,28 @@ def ticket_status():
     if not reservation_id:
         return jsonify({"status": "error", "message": "No reservation ID in session"}), 400
 
-    timeout_limit = 30  # Timeout after 30 seconds
-    start_time = time.time()
+    # Sleep for 5-10 seconds to simulate payment processing
+    time.sleep(random.uniform(5, 10))
 
-    while time.time() - start_time < timeout_limit:
-        try:
-            response = requests.get(
-                f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/ticket/status",
-                params={"reservation_id": reservation_id},
-                timeout=5,
-            )
-            ticket_status = response.json().get("status")
-            logger.info(f"Ticket status for {reservation_id}: {ticket_status}")
+    try:
+        response = requests.get(
+            f"http://{config.BOOK_SVC_WEB_SERVER_HOST}:{config.BOOK_SVC_WEB_SERVER_PORT}/ticket/status",
+            params={"reservation_id": reservation_id},
+            timeout=5,
+        )
+        ticket_status = response.json().get("status")
+        logger.info(f"Ticket status for {reservation_id}: {ticket_status}")
 
-            if ticket_status == "ticket_generated":
-                return jsonify({"status": "ticket_generated"}), 200
+        if ticket_status == "ticket_generated":
+            session["ticket_status"] = ticket_status
+            return jsonify({"status": "ticket_generated"}), 200
 
-            elif ticket_status == "error":
-                return jsonify({"status": "error", "message": "Error in generating ticket"}), 500
+        elif ticket_status == "error":
+            return jsonify({"status": "error", "message": "Error in generating ticket"}), 500
 
-        except requests.RequestException as e:
-            logger.error(f"Error checking ticket status: {e}")
-            return jsonify({"status": "error", "message" : "Unable to check ticket status."}), 500
-
-        time.sleep(1)  # Wait 1 second before polling again
-
-    # If timeout occurs
-    return jsonify({"status": "error", "message": "Ticket generation timed out."}), 504
+    except requests.RequestException as e:
+        logger.error(f"Error checking ticket status: {e}")
+        return jsonify({"status": "error", "message": "Unable to check ticket status."}), 500
 
 
 @app.route("/subscribe/<destination>")
