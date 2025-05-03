@@ -19,7 +19,7 @@ class PaymentSvc:
 
         percentage = random.randint(0, 100)
         # Simulate random success or failure
-        if percentage > 0:  # Randomly choose True (success) or False (failure)
+        if percentage > 40:  # Randomly choose True (success) or False (failure)
             logger.info("Payment approved")
 
             message = {"status": "approved", "payment_data": payment_data}
