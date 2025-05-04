@@ -1,9 +1,19 @@
 [project]
 name = "p2p"
 version = "0.1.0"
-description = "Add your description here"
+description = "Projeto de P2P"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "pyro5>=5.15",
 ]
+
+[project.scripts]
+name-server = "Pyro5.nameserver:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

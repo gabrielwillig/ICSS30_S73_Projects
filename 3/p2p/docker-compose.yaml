@@ -1,0 +1,9 @@
+services:
+  name-server:
+    image: p2p
+    container_name: name-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: no
+    command: name-server
