@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 name-server = "Pyro5.nameserver:main"
+# peer = "peer_v2:main"
 
 [build-system]
 requires = ["hatchling"]

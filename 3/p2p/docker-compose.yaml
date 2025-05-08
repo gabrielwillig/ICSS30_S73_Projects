@@ -2,8 +2,64 @@ services:
   name-server:
     image: p2p
     container_name: name-server
+    working_dir: /app
     build:
       context: .
       dockerfile: Dockerfile
     restart: no
     command: name-server
+  peer-1:
+    image: p2p
+    container_name: peer-1
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: no
+    command: python src/peer_v2.py peer-1
+    volumes:
+      - .:/app
+  peer-2:
+    image: p2p
+    container_name: peer-2
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: no
+    command: python src/peer_v2.py peer-2
+    volumes:
+      - .:/app
+  peer-3:
+    image: p2p
+    container_name: peer-3
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: no
+    command: python src/peer_v2.py peer-3
+    volumes:
+      - .:/app
+  peer-4:
+    image: p2p
+    container_name: peer-4
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: no
+    command: python src/peer_v2.py peer-4
+    volumes:
+      - .:/app
+  peer-5:
+    image: p2p
+    container_name: peer-5
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: no
+    command: python src/peer_v2.py peer-5
+    volumes:
+      - .:/app
