@@ -1,5 +1,6 @@
-python src/peer_v2.py peer-1 &
-python src/peer_v2.py peer-2 &
-python src/peer_v2.py peer-3 &
-python src/peer_v2.py peer-4 & 
-python src/peer_v2.py peer-5 
+cd src
+# python -m peer peer-1 &
+# python -m peer peer-2 &
+# python -m peer peer-3 &
+# python -m peer peer-4 & 
+python -m peer peer-5 

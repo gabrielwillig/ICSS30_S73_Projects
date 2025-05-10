@@ -5,7 +5,7 @@ WORKDIR /app
 # Copy and install Python dependencies first (for layer caching)
 COPY pyproject.toml .
 COPY README.md .
-RUN pip install --no-cache-dir .
+RUN pip install .
 
 # Copy the rest of the application
 COPY . .
