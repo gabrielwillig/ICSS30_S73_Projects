@@ -103,6 +103,9 @@ class Peer:
         with self.lock:
             if self.election_in_progress:
                 return
+            elif self.voted_in_epoch > self.tracker_epoch:
+                logger.warning(f"Época {self.voted_in_epoch} já votada. Ignorando eleição.")
+                return
 
             self.election_in_progress = True
             self.tracker_epoch += 1
@@ -128,9 +131,9 @@ class Peer:
                                     logger.info(f"Voto recebido de {name}")
                                 case "refused":
                                     total_votes += 1
-                                    logger.info(f"Voto negado por {name}")
+                                    logger.warning(f"Voto negado por {name}")
                                 case _:
-                                    logger.info(f"Falha ao solicitar voto de {name}")
+                                    logger.warning(f"Falha ao solicitar voto de {name}")
                                     
                 if self.is_elected(total_votes, votes_received):
                     self.become_tracker()           
@@ -176,7 +179,6 @@ class Peer:
 
         # Notificar outros peers sobre o novo tracker
         self.notify_peers()
-
         # Iniciar envio de heartbeats
         self.start_heartbeat_sender()
 
@@ -195,6 +197,7 @@ class Peer:
             logger.error("Serviço de nomes não disponível para notificação")
 
     @Pyro5.api.expose
+    @Pyro5.api.oneway
     def update_tracker(self, epoch, tracker_uri):
         if epoch > self.tracker_epoch:
             self.tracker_epoch = epoch
