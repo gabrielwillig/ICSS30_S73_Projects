@@ -137,6 +137,11 @@ class Peer:
                                     
                 if self.is_elected(total_votes, votes_received):
                     self.become_tracker()           
+                else:
+                    logger.info(f"Eleição falhou. Votos recebidos: {votes_received}/{total_votes}")
+                    self.election_in_progress = False
+                    self.voted_in_epoch = -1
+                    self.reset_tracker_timer()
                          
             except Pyro5.errors.NamingError:
                 logger.error("Serviço de nomes não disponível durante eleição")
