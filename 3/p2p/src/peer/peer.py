@@ -4,10 +4,14 @@ import threading
 import time
 import random
 import sys
+import os
 from collections import defaultdict
 from .logging import logger
 
-Pyro5.config.COMMTIMEOUT = 1.5     
+Pyro5.config.COMMTIMEOUT = 1.5
+
+PEER_HOSTNAME = os.getenv("PEER_HOSTNAME")
+NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
 
 
 class Peer:
@@ -27,7 +31,7 @@ class Peer:
 
     def register_with_nameserver(self, uri):
         try:
-            with Pyro5.api.locate_ns() as ns:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 ns.register(f"Peer_{self.name}", uri)
                 logger.info(f"Peer {self.name} registrado no serviço de nomes")
                 # Tentar encontrar o tracker atual
@@ -37,7 +41,7 @@ class Peer:
 
     def find_current_tracker(self):
         try:
-            with Pyro5.api.locate_ns() as ns:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 tracker_list = ns.list(prefix="Tracker_Epoca")
                 if tracker_list:
                     # Pegar o tracker com a época mais recente
@@ -112,7 +116,7 @@ class Peer:
             self.voted_in_epoch = self.tracker_epoch
             votes_received = 0
             total_votes = 0
-            
+
             votes_received += 1  # Vota em si mesmo
             total_votes += 1
 
@@ -120,7 +124,7 @@ class Peer:
 
             # Buscar todos os peers conhecidos
             try:
-                with Pyro5.api.locate_ns() as ns:
+                with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                     peer_list = ns.list(prefix="Peer")
                     for name, uri in peer_list.items():
                         if name != f"Peer_{self.name}":
@@ -134,15 +138,15 @@ class Peer:
                                     logger.warning(f"Voto negado por {name}")
                                 case _:
                                     logger.warning(f"Falha ao solicitar voto de {name}")
-                                    
+
                 if self.is_elected(total_votes, votes_received):
-                    self.become_tracker()           
+                    self.become_tracker()
                 else:
-                    logger.info(f"Eleição falhou. Votos recebidos: {votes_received}/{total_votes}")
+                    logger.warning(f"Eleição falhou. Votos recebidos: {votes_received}/{total_votes}")
                     self.election_in_progress = False
                     self.voted_in_epoch = -1
                     self.reset_tracker_timer()
-                         
+
             except Pyro5.errors.NamingError:
                 logger.error("Serviço de nomes não disponível durante eleição")
 
@@ -153,7 +157,7 @@ class Peer:
             return peer.vote(self.tracker_epoch, self.name)
         except Exception as e:
             logger.error(f"{e} :: Falha ao solicitar voto de {uri}")
-    
+
     @Pyro5.api.expose
     def vote(self, epoch, candidate_name):
         if epoch > self.voted_in_epoch:
@@ -162,7 +166,7 @@ class Peer:
             return "accepted"
         logger.warning(f"Voto negado para {candidate_name} na Época {epoch}. Já votei na Época {self.voted_in_epoch}")
         return "refused"
-    
+
     def is_elected(self, total_votes, votes_received):
         """Computa o quorum de votos recebidos"""
         if votes_received >= total_votes // 2 + 1:
@@ -176,7 +180,7 @@ class Peer:
 
         # Registrar como tracker no serviço de nomes
         try:
-            with Pyro5.api.locate_ns() as ns:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 ns.register(f"Tracker_Epoca_{self.tracker_epoch}", self.uri)
                 logger.info(f"Registrado como tracker no serviço de nomes (Época {self.tracker_epoch})")
         except Pyro5.errors.NamingError:
@@ -189,7 +193,7 @@ class Peer:
 
     def notify_peers(self):
         try:
-            with Pyro5.api.locate_ns() as ns:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 peer_list = ns.list(prefix="Peer")
                 for name, uri in peer_list.items():
                     if name != f"Peer_{self.name}":
@@ -222,7 +226,7 @@ class Peer:
 
     def send_heartbeat(self):
         try:
-            with Pyro5.api.locate_ns() as ns:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 peer_list = ns.list(prefix="Peer")
                 for name, uri in peer_list.items():
                     if name != f"Peer_{self.name}":
@@ -301,7 +305,7 @@ class Peer:
                 return
 
             # Conectar ao peer e solicitar arquivo
-            with Pyro5.api.locate_ns() as ns:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 provider_uri = ns.lookup(f"Peer_{provider_name}")
                 provider = Pyro5.api.Proxy(provider_uri)
                 content = provider.request_file(filename, self.name)
@@ -315,7 +319,7 @@ class Peer:
 
     def start_peer(self):
         """Inicia o peer e registra no serviço de nomes"""
-        daemon = Pyro5.api.Daemon()
+        daemon = Pyro5.api.Daemon(host=PEER_HOSTNAME)
         self.uri = daemon.register(self)
         self.register_with_nameserver(self.uri)  # Registrar no serviço de nomes
         self.reset_tracker_timer()  # Iniciar o timer de heartbeat

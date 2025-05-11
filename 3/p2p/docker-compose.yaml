@@ -6,9 +6,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c 'import socket; exit(0 if socket.socket().connect_ex((\"name-server\", 9090)) == 0 else 1)'" ]
+      interval: 1s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
     restart: no
-    command: pyro5-ns
+    command: pyro5-ns -n name-server
   peer-1:
+    depends_on:
+      name-server:
+        condition: service_healthy
     image: p2p
     container_name: peer-1
     working_dir: /app/src
@@ -16,10 +25,16 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: no
+    environment:
+      - PEER_HOSTNAME=peer-1
+      - PYRO_NS_HOST=name-server
     command: python -m peer peer-1
     volumes:
       - .:/app
   peer-2:
+    depends_on:
+      name-server:
+        condition: service_healthy
     image: p2p
     container_name: peer-2
     working_dir: /app/src
@@ -27,10 +42,16 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: no
+    environment:
+      - PEER_HOSTNAME=peer-2
+      - PYRO_NS_HOST=name-server
     command: python -m peer peer-2
     volumes:
       - .:/app
   peer-3:
+    depends_on:
+      name-server:
+        condition: service_healthy
     image: p2p
     container_name: peer-3
     working_dir: /app/src
@@ -38,10 +59,16 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: no
+    environment:
+      - PEER_HOSTNAME=peer-3
+      - PYRO_NS_HOST=name-server
     command: python -m peer peer-3
     volumes:
       - .:/app
   peer-4:
+    depends_on:
+      name-server:
+        condition: service_healthy
     image: p2p
     container_name: peer-4
     working_dir: /app/src
@@ -49,10 +76,16 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: no
+    environment:
+      - PEER_HOSTNAME=peer-4
+      - PYRO_NS_HOST=name-server
     command: python -m peer peer-4
     volumes:
       - .:/app
   peer-5:
+    depends_on:
+      name-server:
+        condition: service_healthy
     image: p2p
     container_name: peer-5
     working_dir: /app/src
@@ -60,6 +93,9 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: no
+    environment:
+      - PEER_HOSTNAME=peer-5
+      - PYRO_NS_HOST=name-server
     command: python -m peer peer-5
     volumes:
       - .:/app
