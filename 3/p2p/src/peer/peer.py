@@ -13,6 +13,9 @@ Pyro5.config.COMMTIMEOUT = 1.5
 PEER_HOSTNAME = os.getenv("PEER_HOSTNAME")
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
 
+TRACKER_HEARTBEAT_INTERVAL = 1  # 100ms
+RAND_TIME_INTERVAL = [1.5, 3.0]  # 150ms - 300ms
+
 
 class Peer:
     def __init__(self, name):
@@ -55,7 +58,7 @@ class Peer:
                     self.register_files_with_tracker()
 
                     # Iniciar heartbeat
-                    self.start_heartbeat_listener()
+                    self.reset_tracker_timer()
         except Pyro5.errors.NamingError:
             logger.error("Nenhum tracker encontrado no serviço de nomes")
 
@@ -87,15 +90,8 @@ class Peer:
                     except Pyro5.errors.CommunicationError:
                         logger.error("Falha ao remover arquivo no tracker")
 
-    def start_heartbeat_listener(self):
-        if self.heartbeat_timer:
-            self.heartbeat_timer.cancel()
-
-        self.heartbeat_timer = threading.Timer(self.get_random_timeout(), self.initiate_election)
-        self.heartbeat_timer.start()
-
     def get_random_timeout(self):
-        return random.uniform(0.15, 0.3)  # 150-300ms
+        return random.uniform(*RAND_TIME_INTERVAL)
 
     def reset_tracker_timer(self):
         if self.heartbeat_timer:
@@ -132,12 +128,10 @@ class Peer:
                                 case "accepted":
                                     total_votes += 1
                                     votes_received += 1
-                                    logger.info(f"Voto recebido de {name}")
                                 case "refused":
                                     total_votes += 1
-                                    logger.warning(f"Voto negado por {name}")
                                 case _:
-                                    logger.warning(f"Falha ao solicitar voto de {name}")
+                                    logger.warning(f"{self.name} falhou ao solicitar voto de {name}")
 
                 if self.is_elected(total_votes, votes_received):
                     self.become_tracker()
@@ -145,6 +139,7 @@ class Peer:
                     logger.warning(f"Eleição falhou. Votos recebidos: {votes_received}/{total_votes}")
                     self.election_in_progress = False
                     self.voted_in_epoch = -1
+                    self.tracker_epoch -= 1
                     self.reset_tracker_timer()
 
             except Pyro5.errors.NamingError:
@@ -152,7 +147,6 @@ class Peer:
 
     def request_vote(self, uri):
         peer = Pyro5.api.Proxy(uri)
-        logger.debug(f"Solicitando voto de {uri}")
         try:
             return peer.vote(self.tracker_epoch, self.name)
         except Exception as e:
@@ -160,12 +154,13 @@ class Peer:
 
     @Pyro5.api.expose
     def vote(self, epoch, candidate_name):
-        if epoch > self.voted_in_epoch:
-            self.voted_in_epoch = epoch
-            logger.info(f"Voto concedido para {candidate_name} na Época {epoch}")
-            return "accepted"
-        logger.warning(f"Voto negado para {candidate_name} na Época {epoch}. Já votei na Época {self.voted_in_epoch}")
-        return "refused"
+        with self.lock:
+            if epoch > self.voted_in_epoch:
+                self.voted_in_epoch = epoch
+                logger.info(f"{self.name} votou em {candidate_name} | Época {epoch}")
+                return "accepted"
+            logger.warning(f"{self.name} negou voto para {candidate_name}. Época {self.voted_in_epoch} já votada")
+            return "refused"
 
     def is_elected(self, total_votes, votes_received):
         """Computa o quorum de votos recebidos"""
@@ -174,7 +169,7 @@ class Peer:
         return False
 
     def become_tracker(self):
-        logger.info(f"Eleito como tracker para Época {self.tracker_epoch}")
+        logger.info(f"Eleito: {self.name} | Época: {self.tracker_epoch}")
         self.current_tracker = self
         self.election_in_progress = False
 
@@ -182,13 +177,16 @@ class Peer:
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 ns.register(f"Tracker_Epoca_{self.tracker_epoch}", self.uri)
-                logger.info(f"Registrado como tracker no serviço de nomes (Época {self.tracker_epoch})")
+                logger.info(f"{self.name} registrado como tracker no serviço de nomes | Época: {self.tracker_epoch}")
         except Pyro5.errors.NamingError:
             logger.error("Falha ao registrar como tracker no serviço de nomes")
 
         # Notificar outros peers sobre o novo tracker
-        self.notify_peers()
+        threading.Thread(target=self.notify_peers).start()
+
         # Iniciar envio de heartbeats
+        logger.debug("Iniciando envio de heartbeats para peers")
+        threading.Thread(target=self.send_heartbeat)
         self.start_heartbeat_sender()
 
     def notify_peers(self):
@@ -200,6 +198,7 @@ class Peer:
                         peer = Pyro5.api.Proxy(uri)
                         try:
                             peer.update_tracker(self.tracker_epoch, self.uri)
+                            logger.debug(f"{name} notificado sobre o novo tracker")
                         except Pyro5.errors.CommunicationError:
                             logger.warning(f"Falha ao notificar {name}")
         except Pyro5.errors.NamingError:
@@ -221,7 +220,7 @@ class Peer:
         if hasattr(self, "heartbeat_sender") and self.heartbeat_sender.is_alive():
             self.heartbeat_sender.cancel()
 
-        self.heartbeat_sender = threading.Timer(0.1, self.send_heartbeat)  # 100ms
+        self.heartbeat_sender = threading.Timer(TRACKER_HEARTBEAT_INTERVAL, self.send_heartbeat)
         self.heartbeat_sender.start()
 
     def send_heartbeat(self):
@@ -232,7 +231,7 @@ class Peer:
                     if name != f"Peer_{self.name}":
                         peer = Pyro5.api.Proxy(uri)
                         try:
-                            peer.heartbeat_received()
+                            peer.heartbeat_received(self.name, self.tracker_epoch)
                         except Pyro5.errors.CommunicationError:
                             pass
         except Pyro5.errors.NamingError:
@@ -242,7 +241,8 @@ class Peer:
 
     @Pyro5.api.expose
     @Pyro5.api.oneway
-    def heartbeat_received(self):
+    def heartbeat_received(self, tracker_name, epoch):
+        logger.debug(f"Heartbeat de {tracker_name} | Época {epoch}")
         self.reset_tracker_timer()
 
     # Métodos do tracker
@@ -329,9 +329,7 @@ class Peer:
         for i in range(3):
             self.add_file(self.name, f"arquivo_{self.name}_{i}.txt")
 
-        threading.Thread(target=daemon.requestLoop, daemon=True).start()
-        return self
-
+        daemon.requestLoop() 
 
 def main():
     if len(sys.argv) < 2:
@@ -341,9 +339,3 @@ def main():
     peer_name = sys.argv[1]
     peer = Peer(peer_name)
     peer.start_peer()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.error("Encerrando peer...")
