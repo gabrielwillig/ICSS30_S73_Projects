@@ -8,7 +8,7 @@ import os
 from collections import defaultdict
 from .logging import logger
 
-Pyro5.config.COMMTIMEOUT = 1.5
+Pyro5.config.COMMTIMEOUT = 0.5
 
 PEER_HOSTNAME = os.getenv("PEER_HOSTNAME")
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
@@ -30,7 +30,7 @@ class Peer:
         self.peers = {}
         self.heartbeat_timer = None
         self.election_timer = None
-        self.lock = threading.Lock()
+        # self.lock = threading.Lock()
 
     def register_with_nameserver(self, uri):
         try:
@@ -72,23 +72,23 @@ class Peer:
                 self.current_tracker = None
 
     def add_file(self, filename):
-        with self.lock:
-            self.files.add(filename)
-            if self.current_tracker:
-                try:
-                    self.current_tracker.add_file(self.name, filename)
-                except Pyro5.errors.CommunicationError:
-                    logger.error("Falha ao atualizar arquivo no tracker")
+        # with self.lock:
+        self.files.add(filename)
+        if self.current_tracker:
+            try:
+                self.current_tracker.add_file(self.name, filename)
+            except Pyro5.errors.CommunicationError:
+                logger.error("Falha ao atualizar arquivo no tracker")
 
     def remove_file(self, filename):
-        with self.lock:
-            if filename in self.files:
-                self.files.remove(filename)
-                if self.current_tracker:
-                    try:
-                        self.current_tracker.remove_file(self.name, filename)
-                    except Pyro5.errors.CommunicationError:
-                        logger.error("Falha ao remover arquivo no tracker")
+        # with self.lock:
+        if filename in self.files:
+            self.files.remove(filename)
+            if self.current_tracker:
+                try:
+                    self.current_tracker.remove_file(self.name, filename)
+                except Pyro5.errors.CommunicationError:
+                    logger.error("Falha ao remover arquivo no tracker")
 
     def get_random_timeout(self):
         return random.uniform(*RAND_TIME_INTERVAL)
@@ -99,51 +99,57 @@ class Peer:
         self.heartbeat_timer = threading.Timer(self.get_random_timeout(), self.initiate_election)
         self.heartbeat_timer.start()
 
+    def voted_in_election_check(self):
+        return self.voted_in_epoch > self.tracker_epoch
+    
     def initiate_election(self):
-        with self.lock:
-            if self.election_in_progress:
-                return
-            elif self.voted_in_epoch > self.tracker_epoch:
-                logger.warning(f"Época {self.voted_in_epoch} já votada. Ignorando eleição.")
-                return
+        # with self.lock:
+        if self.election_in_progress:
+            logger.warning(f"{self.name} | Eleição já em andamento. Ignorando nova eleição.")
+            self.reset_tracker_timer()
+            return
+        elif self.voted_in_election_check():
+            logger.warning(f"{self.name} | Época {self.voted_in_epoch} já votada. Ignorando eleição.")
+            self.reset_tracker_timer()
+            return
 
-            self.election_in_progress = True
-            self.tracker_epoch += 1
-            self.voted_in_epoch = self.tracker_epoch
-            votes_received = 0
-            total_votes = 0
+        self.election_in_progress = True
+        self.tracker_epoch += 1
+        self.voted_in_epoch = self.tracker_epoch
+        votes_received = 0
+        total_votes = 0
 
-            votes_received += 1  # Vota em si mesmo
-            total_votes += 1
+        votes_received += 1  # Vota em si mesmo
+        total_votes += 1
 
-            logger.info(f"Iniciando eleição para Época {self.tracker_epoch}")
+        logger.info(f"Iniciando eleição para Época {self.tracker_epoch}")
 
-            # Buscar todos os peers conhecidos
-            try:
-                with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-                    peer_list = ns.list(prefix="Peer")
-                    for name, uri in peer_list.items():
-                        if name != f"Peer_{self.name}":
-                            match self.request_vote(uri):
-                                case "accepted":
-                                    total_votes += 1
-                                    votes_received += 1
-                                case "refused":
-                                    total_votes += 1
-                                case _:
-                                    logger.warning(f"{self.name} falhou ao solicitar voto de {name}")
+        # Buscar todos os peers conhecidos
+        try:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
+                peer_list = ns.list(prefix="Peer")
+                for name, uri in peer_list.items():
+                    if name != f"Peer_{self.name}":
+                        match self.request_vote(uri):
+                            case "accepted":
+                                total_votes += 1
+                                votes_received += 1
+                            case "refused":
+                                total_votes += 1
+                            case _:
+                                logger.warning(f"{self.name} falhou ao solicitar voto de {name}")
 
-                if self.is_elected(total_votes, votes_received):
-                    self.become_tracker()
-                else:
-                    logger.warning(f"Eleição falhou. Votos recebidos: {votes_received}/{total_votes}")
-                    self.election_in_progress = False
-                    self.voted_in_epoch = -1
-                    self.tracker_epoch -= 1
-                    self.reset_tracker_timer()
+            if self.is_elected(total_votes, votes_received):
+                self.become_tracker()
+            else:
+                logger.warning(f"Eleição falhou. Votos recebidos: {votes_received}/{total_votes}")
+                self.election_in_progress = False
+                self.voted_in_epoch = -1
+                self.tracker_epoch -= 1
+                self.reset_tracker_timer()
 
-            except Pyro5.errors.NamingError:
-                logger.error("Serviço de nomes não disponível durante eleição")
+        except Pyro5.errors.NamingError:
+            logger.error("Serviço de nomes não disponível durante eleição")
 
     def request_vote(self, uri):
         peer = Pyro5.api.Proxy(uri)
@@ -154,13 +160,13 @@ class Peer:
 
     @Pyro5.api.expose
     def vote(self, epoch, candidate_name):
-        with self.lock:
-            if epoch > self.voted_in_epoch:
-                self.voted_in_epoch = epoch
-                logger.info(f"{self.name} votou em {candidate_name} | Época {epoch}")
-                return "accepted"
-            logger.warning(f"{self.name} negou voto para {candidate_name}. Época {self.voted_in_epoch} já votada")
-            return "refused"
+        # with self.lock:
+        if epoch > self.voted_in_epoch:
+            self.voted_in_epoch = epoch
+            logger.info(f"{self.name} votou em {candidate_name} | Época {epoch}")
+            return "accepted"
+        logger.warning(f"{self.name} negou voto para {candidate_name}. Época {self.voted_in_epoch} já votada")
+        return "refused"
 
     def is_elected(self, total_votes, votes_received):
         """Computa o quorum de votos recebidos"""
@@ -250,30 +256,30 @@ class Peer:
     @Pyro5.api.expose
     def register_files(self, peer_name, files):
         """Tracker method to register files from a peer"""
-        with self.lock:
-            for filename in files:
-                if filename not in self.files_index:  # files_index is a defaultdict(set)
-                    self.files_index[filename] = set()
-                self.files_index[filename].add(peer_name)
+        # with self.lock:
+        for filename in files:
+            if filename not in self.files_index:  # files_index is a defaultdict(set)
+                self.files_index[filename] = set()
+            self.files_index[filename].add(peer_name)
 
     @Pyro5.api.expose
     def add_file(self, peer_name, filename):
         """Tracker method to add a single file from a peer"""
-        with self.lock:
-            self.files_index[filename].add(peer_name)
+        # with self.lock:
+        self.files_index[filename].add(peer_name)
 
     @Pyro5.api.expose
     def remove_file(self, peer_name, filename):
-        with self.lock:
-            if filename in self.files and peer_name in self.files[filename]:
-                self.files[filename].remove(peer_name)
-                if not self.files[filename]:
-                    del self.files[filename]
+        # with self.lock:
+        if filename in self.files and peer_name in self.files[filename]:
+            self.files[filename].remove(peer_name)
+            if not self.files[filename]:
+                del self.files[filename]
 
     @Pyro5.api.expose
     def get_file_locations(self, filename):
-        with self.lock:
-            return list(self.files.get(filename, set()))
+        # with self.lock:
+        return list(self.files.get(filename, set()))
 
     # Métodos P2P
     @Pyro5.api.expose
