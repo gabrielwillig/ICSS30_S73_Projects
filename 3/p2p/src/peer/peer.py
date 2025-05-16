@@ -23,13 +23,12 @@ TIME_MAP = {
     "peer-5": 3.5,
 }
 
-
 class Peer:
     def __init__(self, name):
         self.name = name
         self.files_index = defaultdict(set)  # Usado para rastrear arquivos
         self.files = set()
-        self.current_tracker = None
+        self.current_tracker_uri = None
         self.uri = None
         self.tracker_epoch = 0
         self.voted_in_epoch = -1
@@ -38,6 +37,17 @@ class Peer:
         self.heartbeat_timer = None
         self.election_timer = None
         # self.lock = threading.Lock()
+        
+    def get_tracker_proxy(self, uri):
+        return Pyro5.api.Proxy(uri)
+    
+    def get_tracker_uri(self, epoch):
+        with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
+            try:
+                return ns.lookup(f"Tracker_Epoca_{epoch}")
+            except Pyro5.errors.NamingError:
+                logger.error("Falha ao localizar o tracker no serviço de nomes")
+                return None
 
     def register_with_nameserver(self, uri):
         try:
@@ -56,8 +66,7 @@ class Peer:
                 if tracker_list:
                     # Pegar o tracker com a época mais recente
                     latest_epoch = max(int(name.split("_")[-1]) for name in tracker_list.keys())
-                    tracker_uri = ns.lookup(f"Tracker_Epoca_{latest_epoch}")
-                    self.current_tracker = Pyro5.api.Proxy(tracker_uri)
+                    self.current_tracker_uri = ns.lookup(f"Tracker_Epoca_{latest_epoch}")
                     self.tracker_epoch = latest_epoch
                     logger.info(f"Tracker encontrado (Época {self.tracker_epoch})")
 
@@ -70,13 +79,14 @@ class Peer:
             logger.error("Nenhum tracker encontrado no serviço de nomes")
 
     def register_files_with_tracker(self):
-        if self.current_tracker:
+        if self.current_tracker_uri:
             try:
-                self.current_tracker.register_files(self.name, list(self.files))
+                tracker_proxy = self.get_tracker_proxy(self.current_tracker_uri)
+                tracker_proxy.register_files(self.name, list(self.files))
                 logger.info(f"Arquivos registrados no tracker: {self.files}")
             except Pyro5.errors.CommunicationError:
                 logger.error("Falha ao registrar arquivos no tracker")
-                self.current_tracker = None
+                self.current_tracker_uri = None
 
     def add_file(self, filename):
         # with self.lock:
@@ -196,39 +206,39 @@ class Peer:
             logger.error("Falha ao registrar como tracker no serviço de nomes")
 
         # Notificar outros peers sobre o novo tracker
-        threading.Thread(target=self.notify_peers).start()
+        # threading.Thread(target=self.notify_peers).start()
 
         # Iniciar envio de heartbeats
         logger.debug("Iniciando envio de heartbeats para peers")
-        threading.Thread(target=self.send_heartbeat)
+        # threading.Thread(target=self.send_heartbeat)
         self.start_heartbeat_sender()
 
-    def notify_peers(self):
-        try:
-            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-                peer_list = ns.list(prefix="Peer")
-                for name, uri in peer_list.items():
-                    if name != f"Peer_{self.name}":
-                        peer = Pyro5.api.Proxy(uri)
-                        try:
-                            peer.update_tracker(self.tracker_epoch, self.uri)
-                            logger.debug(f"{name} notificado sobre o novo tracker")
-                        except Pyro5.errors.CommunicationError:
-                            logger.warning(f"Falha ao notificar {name}")
-        except Pyro5.errors.NamingError:
-            logger.error("Serviço de nomes não disponível para notificação")
+    # def notify_peers(self):
+    #     try:
+    #         with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
+    #             peer_list = ns.list(prefix="Peer")
+    #             for name, uri in peer_list.items():
+    #                 if name != f"Peer_{self.name}":
+    #                     peer = Pyro5.api.Proxy(uri)
+    #                     try:
+    #                         peer.update_tracker(self.tracker_epoch, self.uri)
+    #                         logger.debug(f"{name} notificado sobre o novo tracker")
+    #                     except Pyro5.errors.CommunicationError:
+    #                         logger.warning(f"Falha ao notificar {name}")
+    #     except Pyro5.errors.NamingError:
+    #         logger.error("Serviço de nomes não disponível para notificação")
 
-    @Pyro5.api.expose
-    @Pyro5.api.oneway
-    def update_tracker(self, epoch, tracker_uri):
-        if epoch > self.tracker_epoch:
-            self.tracker_epoch = epoch
-            self.current_tracker = Pyro5.api.Proxy(tracker_uri)
-            self.voted_in_epoch = -1
-            self.reset_tracker_timer()
+    # @Pyro5.api.expose
+    # @Pyro5.api.oneway
+    # def update_tracker(self, epoch, tracker_uri):
+    #     if epoch > self.tracker_epoch:
+    #         self.tracker_epoch = epoch
+    #         self.current_tracker = Pyro5.api.Proxy(tracker_uri)
+    #         self.voted_in_epoch = -1
+    #         self.reset_tracker_timer()
 
-            # Registrar arquivos com o novo tracker
-            self.register_files_with_tracker()
+    #         # Registrar arquivos com o novo tracker
+    #         self.register_files_with_tracker()
 
     def start_heartbeat_sender(self):
         if hasattr(self, "heartbeat_sender") and self.heartbeat_sender.is_alive():
@@ -256,7 +266,16 @@ class Peer:
     @Pyro5.api.expose
     @Pyro5.api.oneway
     def heartbeat_received(self, tracker_name, epoch):
-        logger.debug(f"Heartbeat de {tracker_name} | Época {epoch}")
+        logger.debug(f"Heartbeat received from {tracker_name} | Época {epoch} | Época do meu tracker: {self.tracker_epoch}")
+        if epoch > self.tracker_epoch:
+            self.tracker_epoch = epoch
+            self.voted_in_epoch = -1
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
+                tracker_uri = ns.lookup(f"Tracker_Epoca_{epoch}")
+                self.current_tracker_uri = tracker_uri
+            logger.info(f"Atualizando tracker para {tracker_name} | Época {epoch}")
+            threading.Thread(target=self.register_files_with_tracker).start()
+            
         self.reset_tracker_timer()
 
     # Métodos do tracker
