@@ -1,6 +1,7 @@
 import Pyro5.api
 import Pyro5.errors
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import random
 import sys
@@ -8,13 +9,19 @@ import os
 from collections import defaultdict
 from .logging import logger
 
-Pyro5.config.COMMTIMEOUT = 0.5
-
 PEER_HOSTNAME = os.getenv("PEER_HOSTNAME")
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
 
 TRACKER_HEARTBEAT_INTERVAL = 1  # 100ms
 RAND_TIME_INTERVAL = [1.5, 3.0]  # 150ms - 300ms
+
+TIME_MAP = {
+    "peer-1": 1.5,
+    "peer-2": 2.0,
+    "peer-3": 2.5,
+    "peer-4": 3.0,
+    "peer-5": 3.5,
+}
 
 
 class Peer:
@@ -91,7 +98,7 @@ class Peer:
                     logger.error("Falha ao remover arquivo no tracker")
 
     def get_random_timeout(self):
-        return random.uniform(*RAND_TIME_INTERVAL)
+        return TIME_MAP.get(self.name)
 
     def reset_tracker_timer(self):
         if self.heartbeat_timer:
@@ -124,20 +131,23 @@ class Peer:
 
         logger.info(f"Iniciando eleição para Época {self.tracker_epoch}")
 
-        # Buscar todos os peers conhecidos
-        try:
-            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-                peer_list = ns.list(prefix="Peer")
-                for name, uri in peer_list.items():
-                    if name != f"Peer_{self.name}":
-                        match self.request_vote(uri):
-                            case "accepted":
-                                total_votes += 1
-                                votes_received += 1
-                            case "refused":
-                                total_votes += 1
-                            case _:
-                                logger.warning(f"{self.name} falhou ao solicitar voto de {name}")
+        with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
+            peer_list = ns.list(prefix="Peer")
+        
+        peers_to_request_vote = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
+
+        with ThreadPoolExecutor(max_workers=16) as executor:
+            results = list(executor.map(self.request_vote, peers_to_request_vote))
+
+        for r, p in zip(results, peers_to_request_vote):
+            match r:
+                case "accepted":
+                    total_votes += 1
+                    votes_received += 1
+                case "refused":
+                    total_votes += 1
+                case _:
+                    logger.warning(f"{self.name} falhou ao solicitar voto de {p}")
 
             if self.is_elected(total_votes, votes_received):
                 self.become_tracker()
@@ -148,11 +158,9 @@ class Peer:
                 self.tracker_epoch -= 1
                 self.reset_tracker_timer()
 
-        except Pyro5.errors.NamingError:
-            logger.error("Serviço de nomes não disponível durante eleição")
-
     def request_vote(self, uri):
         peer = Pyro5.api.Proxy(uri)
+        peer._pyroTimeout = 0.1
         try:
             return peer.vote(self.tracker_epoch, self.name)
         except Exception as e:
