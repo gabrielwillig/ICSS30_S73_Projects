@@ -91,9 +91,10 @@ class Peer:
     def add_file(self, filename):
         # with self.lock:
         self.files.add(filename)
-        if self.current_tracker:
+        if self.current_tracker_uri:
             try:
-                self.current_tracker.add_file(self.name, filename)
+                tracker_proxy = self.get_tracker_proxy(self.current_tracker_uri)
+                tracker_proxy.add_file(self.name, filename)
             except Pyro5.errors.CommunicationError:
                 logger.error("Falha ao atualizar arquivo no tracker")
 
@@ -101,9 +102,10 @@ class Peer:
         # with self.lock:
         if filename in self.files:
             self.files.remove(filename)
-            if self.current_tracker:
+            if self.current_tracker_uri:
                 try:
-                    self.current_tracker.remove_file(self.name, filename)
+                    tracker_proxy = self.get_tracker_proxy(self.current_tracker_uri)
+                    tracker_proxy.remove_file(self.name, filename)
                 except Pyro5.errors.CommunicationError:
                     logger.error("Falha ao remover arquivo no tracker")
 
@@ -194,7 +196,7 @@ class Peer:
 
     def become_tracker(self):
         logger.info(f"Eleito: {self.name} | Época: {self.tracker_epoch}")
-        self.current_tracker = self
+        self.current_tracker_uri = self.uri
         self.election_in_progress = False
 
         # Registrar como tracker no serviço de nomes
@@ -205,40 +207,9 @@ class Peer:
         except Pyro5.errors.NamingError:
             logger.error("Falha ao registrar como tracker no serviço de nomes")
 
-        # Notificar outros peers sobre o novo tracker
-        # threading.Thread(target=self.notify_peers).start()
-
         # Iniciar envio de heartbeats
         logger.debug("Iniciando envio de heartbeats para peers")
-        # threading.Thread(target=self.send_heartbeat)
         self.start_heartbeat_sender()
-
-    # def notify_peers(self):
-    #     try:
-    #         with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-    #             peer_list = ns.list(prefix="Peer")
-    #             for name, uri in peer_list.items():
-    #                 if name != f"Peer_{self.name}":
-    #                     peer = Pyro5.api.Proxy(uri)
-    #                     try:
-    #                         peer.update_tracker(self.tracker_epoch, self.uri)
-    #                         logger.debug(f"{name} notificado sobre o novo tracker")
-    #                     except Pyro5.errors.CommunicationError:
-    #                         logger.warning(f"Falha ao notificar {name}")
-    #     except Pyro5.errors.NamingError:
-    #         logger.error("Serviço de nomes não disponível para notificação")
-
-    # @Pyro5.api.expose
-    # @Pyro5.api.oneway
-    # def update_tracker(self, epoch, tracker_uri):
-    #     if epoch > self.tracker_epoch:
-    #         self.tracker_epoch = epoch
-    #         self.current_tracker = Pyro5.api.Proxy(tracker_uri)
-    #         self.voted_in_epoch = -1
-    #         self.reset_tracker_timer()
-
-    #         # Registrar arquivos com o novo tracker
-    #         self.register_files_with_tracker()
 
     def start_heartbeat_sender(self):
         if hasattr(self, "heartbeat_sender") and self.heartbeat_sender.is_alive():
