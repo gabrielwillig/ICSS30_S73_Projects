@@ -1,27 +1,42 @@
-import Pyro5.api
-import Pyro5.errors
+import socket
+import selectors
 import threading
-from concurrent.futures import ThreadPoolExecutor
-import time
 import random
 import sys
 import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+import Pyro5.api
+import Pyro5.errors
 from .logging import logger
 
-PEER_HOSTNAME = os.getenv("PEER_HOSTNAME")
+def get_my_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # doesn't actually connect, just finds the outbound IP
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
+    return ip
+
+PEER_HOSTNAME = get_my_ip()  # ou o IP do peer
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
 
 TRACKER_HEARTBEAT_INTERVAL = 1  # 100ms
 RAND_TIME_INTERVAL = [15, 30]  # 150ms - 300ms
 
 TIME_MAP = {
-    "peer-1": 15,
-    "peer-2": 20,
-    "peer-3": 25,
-    "peer-4": 30,
-    "peer-5": 35,
+    "peer-1": 1.5,
+    "peer-2": 2.0,
+    "peer-3": 2.5,
+    "peer-4": 3.0,
+    "peer-5": 3.5,
 }
+
+HEARTBEAT_UDP_PORT = 9999  # or any port you choose for UDP heartbeats
+
+Pyro5.config.COMMTIMEOUT = 0.5  # Timeout for Pyro calls
 
 class Peer:
     def __init__(self, name):
@@ -37,10 +52,10 @@ class Peer:
         self.heartbeat_timer = None
         self.election_timer = None
         # self.lock = threading.Lock()
-        
+
     def get_tracker_proxy(self, uri):
         return Pyro5.api.Proxy(uri)
-    
+
     def get_tracker_uri(self, epoch):
         with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
             try:
@@ -49,15 +64,13 @@ class Peer:
                 logger.error("Falha ao localizar o tracker no serviço de nomes")
                 return None
 
-    def register_with_nameserver(self, uri):
+    def register_with_nameserver(self, uri, name):
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-                ns.register(f"Peer_{self.name}", uri)
-                logger.info(f"Peer {self.name} registrado no serviço de nomes")
-                # Tentar encontrar o tracker atual
-                self.find_current_tracker()
+                ns.register(name, uri)
+                logger.info(f"Peer {name} registrado no serviço de nomes")
         except Pyro5.errors.NamingError:
-            logger.error("Serviço de nomes não encontrado. Iniciando sem tracker.")
+            logger.error("Serviço de nomes não encontrado.")
 
     def find_current_tracker(self):
         try:
@@ -72,9 +85,6 @@ class Peer:
 
                     # Registrar arquivos no tracker
                     self.register_files_with_tracker()
-
-                    # Iniciar heartbeat
-                    self.reset_tracker_timer()
         except Pyro5.errors.NamingError:
             logger.error("Nenhum tracker encontrado no serviço de nomes")
 
@@ -120,7 +130,7 @@ class Peer:
 
     def voted_in_election_check(self):
         return self.voted_in_epoch > self.tracker_epoch
-    
+
     def initiate_election(self):
         # with self.lock:
         if self.election_in_progress:
@@ -145,7 +155,7 @@ class Peer:
 
         with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
             peer_list = ns.list(prefix="Peer")
-        
+
         peers_to_request_vote = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
 
         with ThreadPoolExecutor(max_workers=16) as executor:
@@ -200,9 +210,8 @@ class Peer:
 
         # Registrar como tracker no serviço de nomes
         try:
-            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-                ns.register(f"Tracker_Epoca_{self.tracker_epoch}", self.uri)
-                logger.info(f"{self.name} registrado como tracker no serviço de nomes | Época: {self.tracker_epoch}")
+            self.register_with_nameserver(self.uri, f"Tracker_Epoca_{self.tracker_epoch}")
+            logger.info(f"{self.name} registrado como tracker no serviço de nomes | Época: {self.tracker_epoch}")
         except Pyro5.errors.NamingError:
             logger.error("Falha ao registrar como tracker no serviço de nomes")
 
@@ -221,38 +230,61 @@ class Peer:
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 peer_list = ns.list(prefix="Peer")
-            
-            peers_to_send_heartbeat = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
-            
-            def send_heartbeat_to_peer(uri):
-                with self.get_tracker_proxy(uri) as peer:
-                    peer._pyroTimeout = 0.3
-                    try:
-                        logger.debug(f"Sending heartbeat to {uri}")
-                        peer.heartbeat_received(self.name, self.tracker_epoch)
-                    except Exception as e:
-                        logger.error(f"Falha ao enviar heartbeat para {uri}: {e}")
 
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(send_heartbeat_to_peer, uri) for uri in peers_to_send_heartbeat]
-                for future in futures:
-                    try:
-                        future.result(timeout=0.2)
-                    except Exception as e:
-                        logger.error(f"Heartbeat future failed: {e}")
-                logger.debug(f"Heartbeats enviados para {len(peers_to_send_heartbeat)} peers")
-            logger.debug(f"Getting out of executor")
-                
+            # peer_list maps name -> uri, we need IP and UDP port for UDP heartbeat
+            # Assuming uri host contains IP or hostname; adjust accordingly
+            peers_to_send_heartbeat = [
+                (name, Pyro5.api.URI(uri).host) for name, uri in peer_list.items() if name != f"Peer_{self.name}"
+            ]
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(0.2)  # just in case
+
+            msg = f"{self.name},{self.tracker_epoch}".encode()
+
+            for name, host in peers_to_send_heartbeat:
+                try:
+                    sock.sendto(msg, (host, HEARTBEAT_UDP_PORT))
+                    logger.debug(f"Sent UDP heartbeat to {name} @ {host}:{HEARTBEAT_UDP_PORT}")
+                except Exception as e:
+                    logger.error(f"Failed to send UDP heartbeat to {name} ({host}): {e}")
+
+            sock.close()
         except Pyro5.errors.NamingError:
             logger.error("Serviço de nomes não disponível para enviar heartbeats")
 
-        logger.debug(f"Restartando timer de heartbeat")
+        logger.debug(f"Restarting heartbeat timer")
         self.start_heartbeat_sender()
 
-    @Pyro5.api.expose
-    @Pyro5.api.oneway
-    def heartbeat_received(self, tracker_name, epoch):
-        logger.debug(f"Heartbeat received from {tracker_name} | Época {epoch} | Época do meu tracker: {self.tracker_epoch}")
+    def start_udp_heartbeat_listener(self):
+        selector = selectors.DefaultSelector()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", HEARTBEAT_UDP_PORT))
+        sock.setblocking(False)
+        selector.register(sock, selectors.EVENT_READ)
+
+        def listen():
+            logger.info(f"Event-driven UDP listener on port {HEARTBEAT_UDP_PORT}")
+            while True:
+                events = selector.select(timeout=None)  # Block until data is ready
+                for key, _ in events:
+                    recv_sock = key.fileobj
+                    try:
+                        data, addr = recv_sock.recvfrom(1024)
+                        decoded = data.decode()
+                        peer_name, epoch_str = decoded.split(",")
+                        epoch = int(epoch_str)
+                        logger.debug(f"UDP heartbeat received from {peer_name} @ {addr} with epoch {epoch}")
+                        self.handler_heartbeat(peer_name, epoch)
+                    except Exception as e:
+                        logger.error(f"Error handling UDP heartbeat: {e}")
+
+        threading.Thread(target=listen, daemon=True).start()
+
+    def handler_heartbeat(self, tracker_name, epoch):
+        logger.debug(
+            f"Heartbeat received from {tracker_name} | Época {epoch} | Época do meu tracker: {self.tracker_epoch}"
+        )
         if epoch > self.tracker_epoch:
             self.tracker_epoch = epoch
             self.voted_in_epoch = -1
@@ -261,7 +293,7 @@ class Peer:
                 self.current_tracker_uri = tracker_uri
             logger.info(f"Atualizando tracker para {tracker_name} | Época {epoch}")
             # threading.Thread(target=self.register_files_with_tracker).start()
-            
+
         self.reset_tracker_timer()
 
     # Métodos do tracker
@@ -340,7 +372,9 @@ class Peer:
         """Inicia o peer e registra no serviço de nomes"""
         daemon = Pyro5.api.Daemon(host=PEER_HOSTNAME)
         self.uri = daemon.register(self)
-        self.register_with_nameserver(self.uri)  # Registrar no serviço de nomes
+        self.register_with_nameserver(self.uri, f"Peer_{self.name}")  # Registrar no serviço de nomes
+        self.find_current_tracker()
+        self.start_udp_heartbeat_listener()  # Iniciar o listener UDP
         self.reset_tracker_timer()  # Iniciar o timer de heartbeat
         logger.info(f"Peer {self.name} iniciado com URI: {self.uri}")
 
@@ -348,7 +382,8 @@ class Peer:
         for i in range(3):
             self.add_file(self.name, f"arquivo_{self.name}_{i}.txt")
 
-        daemon.requestLoop() 
+        daemon.requestLoop()
+
 
 def main():
     if len(sys.argv) < 2:
