@@ -13,14 +13,14 @@ PEER_HOSTNAME = os.getenv("PEER_HOSTNAME")
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
 
 TRACKER_HEARTBEAT_INTERVAL = 1  # 100ms
-RAND_TIME_INTERVAL = [1.5, 3.0]  # 150ms - 300ms
+RAND_TIME_INTERVAL = [15, 30]  # 150ms - 300ms
 
 TIME_MAP = {
-    "peer-1": 1.5,
-    "peer-2": 2.0,
-    "peer-3": 2.5,
-    "peer-4": 3.0,
-    "peer-5": 3.5,
+    "peer-1": 15,
+    "peer-2": 20,
+    "peer-3": 25,
+    "peer-4": 30,
+    "peer-5": 35,
 }
 
 class Peer:
@@ -171,12 +171,11 @@ class Peer:
                 self.reset_tracker_timer()
 
     def request_vote(self, uri):
-        peer = Pyro5.api.Proxy(uri)
-        peer._pyroTimeout = 0.1
-        try:
-            return peer.vote(self.tracker_epoch, self.name)
-        except Exception as e:
-            logger.error(f"{e} :: Falha ao solicitar voto de {uri}")
+        with self.get_tracker_proxy(uri) as peer:
+            try:
+                return peer.vote(self.tracker_epoch, self.name)
+            except Exception as e:
+                logger.error(f"{e} :: Falha ao solicitar voto de {uri}")
 
     @Pyro5.api.expose
     def vote(self, epoch, candidate_name):
@@ -222,16 +221,32 @@ class Peer:
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 peer_list = ns.list(prefix="Peer")
-                for name, uri in peer_list.items():
-                    if name != f"Peer_{self.name}":
-                        peer = Pyro5.api.Proxy(uri)
-                        try:
-                            peer.heartbeat_received(self.name, self.tracker_epoch)
-                        except Pyro5.errors.CommunicationError:
-                            pass
+            
+            peers_to_send_heartbeat = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
+            
+            def send_heartbeat_to_peer(uri):
+                with self.get_tracker_proxy(uri) as peer:
+                    peer._pyroTimeout = 0.3
+                    try:
+                        logger.debug(f"Sending heartbeat to {uri}")
+                        peer.heartbeat_received(self.name, self.tracker_epoch)
+                    except Exception as e:
+                        logger.error(f"Falha ao enviar heartbeat para {uri}: {e}")
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(send_heartbeat_to_peer, uri) for uri in peers_to_send_heartbeat]
+                for future in futures:
+                    try:
+                        future.result(timeout=0.2)
+                    except Exception as e:
+                        logger.error(f"Heartbeat future failed: {e}")
+                logger.debug(f"Heartbeats enviados para {len(peers_to_send_heartbeat)} peers")
+            logger.debug(f"Getting out of executor")
+                
         except Pyro5.errors.NamingError:
             logger.error("Serviço de nomes não disponível para enviar heartbeats")
 
+        logger.debug(f"Restartando timer de heartbeat")
         self.start_heartbeat_sender()
 
     @Pyro5.api.expose
@@ -245,7 +260,7 @@ class Peer:
                 tracker_uri = ns.lookup(f"Tracker_Epoca_{epoch}")
                 self.current_tracker_uri = tracker_uri
             logger.info(f"Atualizando tracker para {tracker_name} | Época {epoch}")
-            threading.Thread(target=self.register_files_with_tracker).start()
+            # threading.Thread(target=self.register_files_with_tracker).start()
             
         self.reset_tracker_timer()
 
