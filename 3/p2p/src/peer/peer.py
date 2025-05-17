@@ -1,5 +1,4 @@
 import socket
-import selectors
 import threading
 import random
 import sys
@@ -10,6 +9,7 @@ import Pyro5.api
 import Pyro5.errors
 from .logging import logger
 
+
 def get_my_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -19,6 +19,7 @@ def get_my_ip():
     finally:
         s.close()
     return ip
+
 
 PEER_HOSTNAME = get_my_ip()  # ou o IP do peer
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
@@ -34,9 +35,8 @@ TIME_MAP = {
     "peer-5": 3.5,
 }
 
-HEARTBEAT_UDP_PORT = 9999  # or any port you choose for UDP heartbeats
+Pyro5.config.COMMTIMEOUT = 0.1  # Timeout for Pyro calls
 
-Pyro5.config.COMMTIMEOUT = 0.5  # Timeout for Pyro calls
 
 class Peer:
     def __init__(self, name):
@@ -227,61 +227,32 @@ class Peer:
         self.heartbeat_sender.start()
 
     def send_heartbeat(self):
+
+        def send_heartbeat_to_peer(uri):
+            with self.get_tracker_proxy(uri) as peer:
+                try:
+                    logger.debug(f"Sending heartbeat to {uri}")
+                    peer.heartbeat_received(self.name, self.tracker_epoch)
+                except Exception as e:
+                    logger.error(f"Falha ao enviar heartbeat para {uri}: {e}")
+
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 peer_list = ns.list(prefix="Peer")
 
-            # peer_list maps name -> uri, we need IP and UDP port for UDP heartbeat
-            # Assuming uri host contains IP or hostname; adjust accordingly
-            peers_to_send_heartbeat = [
-                (name, Pyro5.api.URI(uri).host) for name, uri in peer_list.items() if name != f"Peer_{self.name}"
-            ]
+            peers_to_send_heartbeat = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
 
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(0.2)  # just in case
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                executor.map(send_heartbeat_to_peer, peers_to_send_heartbeat)
 
-            msg = f"{self.name},{self.tracker_epoch}".encode()
-
-            for name, host in peers_to_send_heartbeat:
-                try:
-                    sock.sendto(msg, (host, HEARTBEAT_UDP_PORT))
-                    logger.debug(f"Sent UDP heartbeat to {name} @ {host}:{HEARTBEAT_UDP_PORT}")
-                except Exception as e:
-                    logger.error(f"Failed to send UDP heartbeat to {name} ({host}): {e}")
-
-            sock.close()
         except Pyro5.errors.NamingError:
             logger.error("Serviço de nomes não disponível para enviar heartbeats")
 
-        logger.debug(f"Restarting heartbeat timer")
         self.start_heartbeat_sender()
 
-    def start_udp_heartbeat_listener(self):
-        selector = selectors.DefaultSelector()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(("0.0.0.0", HEARTBEAT_UDP_PORT))
-        sock.setblocking(False)
-        selector.register(sock, selectors.EVENT_READ)
-
-        def listen():
-            logger.info(f"Event-driven UDP listener on port {HEARTBEAT_UDP_PORT}")
-            while True:
-                events = selector.select(timeout=None)  # Block until data is ready
-                for key, _ in events:
-                    recv_sock = key.fileobj
-                    try:
-                        data, addr = recv_sock.recvfrom(1024)
-                        decoded = data.decode()
-                        peer_name, epoch_str = decoded.split(",")
-                        epoch = int(epoch_str)
-                        logger.debug(f"UDP heartbeat received from {peer_name} @ {addr} with epoch {epoch}")
-                        self.handler_heartbeat(peer_name, epoch)
-                    except Exception as e:
-                        logger.error(f"Error handling UDP heartbeat: {e}")
-
-        threading.Thread(target=listen, daemon=True).start()
-
-    def handler_heartbeat(self, tracker_name, epoch):
+    @Pyro5.api.expose
+    @Pyro5.api.oneway
+    def heartbeat_received(self, tracker_name, epoch):
         logger.debug(
             f"Heartbeat received from {tracker_name} | Época {epoch} | Época do meu tracker: {self.tracker_epoch}"
         )
@@ -374,7 +345,6 @@ class Peer:
         self.uri = daemon.register(self)
         self.register_with_nameserver(self.uri, f"Peer_{self.name}")  # Registrar no serviço de nomes
         self.find_current_tracker()
-        self.start_udp_heartbeat_listener()  # Iniciar o listener UDP
         self.reset_tracker_timer()  # Iniciar o timer de heartbeat
         logger.info(f"Peer {self.name} iniciado com URI: {self.uri}")
 
