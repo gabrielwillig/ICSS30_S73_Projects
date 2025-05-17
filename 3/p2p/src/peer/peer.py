@@ -25,7 +25,7 @@ PEER_HOSTNAME = get_my_ip()  # ou o IP do peer
 NAMESERVER_HOSTNAME = os.getenv("PYRO_NS_HOSTNAME")
 
 TRACKER_HEARTBEAT_INTERVAL = 1  # 100ms
-RAND_TIME_INTERVAL = [15, 30]  # 150ms - 300ms
+# RAND_TIME_INTERVAL = [15, 30]  # 150ms - 300ms
 
 TIME_MAP = {
     "peer-1": 1.5,
@@ -231,10 +231,11 @@ class Peer:
         def send_heartbeat_to_peer(uri):
             with self.get_tracker_proxy(uri) as peer:
                 try:
-                    logger.debug(f"Sending heartbeat to {uri}")
+                    # logger.debug(f"Sending heartbeat to {uri}")
                     peer.heartbeat_received(self.name, self.tracker_epoch)
                 except Exception as e:
-                    logger.error(f"Falha ao enviar heartbeat para {uri}: {e}")
+                    pass
+                    # logger.error(f"Falha ao enviar heartbeat para {uri}: {e}")
 
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
@@ -253,9 +254,9 @@ class Peer:
     @Pyro5.api.expose
     @Pyro5.api.oneway
     def heartbeat_received(self, tracker_name, epoch):
-        logger.debug(
-            f"Heartbeat received from {tracker_name} | Época {epoch} | Época do meu tracker: {self.tracker_epoch}"
-        )
+        # logger.debug(
+        #     f"Heartbeat received from {tracker_name} | Época {epoch} | Época do meu tracker: {self.tracker_epoch}"
+        # )
         if epoch > self.tracker_epoch:
             self.tracker_epoch = epoch
             self.voted_in_epoch = -1
