@@ -1,14 +1,16 @@
-import socket
-import threading
-import random
-import sys
 import os
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
+import sys
+import socket
+import inquirer
+import threading
+
 import Pyro5.api
 import Pyro5.errors
-from .logging import logger
 
+from collections import defaultdict
+
+from .logging import logger
+from .utils import generate_random_text_file
 
 def get_my_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -41,8 +43,8 @@ Pyro5.config.COMMTIMEOUT = 0.1  # Timeout for Pyro calls
 class Peer:
     def __init__(self, name):
         self.name = name
-        self.files_index = defaultdict(set)  # Usado para rastrear arquivos
-        self.files = set()
+        self.files_index = defaultdict(set)  # Usado para rastrear arquivos, apenas tracker o possui
+        self.files = set() # Usado para rastrear arquivos, apenas o peer possui
         self.current_tracker_uri = None
         self.uri = None
         self.tracker_epoch = 0
@@ -93,7 +95,7 @@ class Peer:
             try:
                 tracker_proxy = self.get_tracker_proxy(self.current_tracker_uri)
                 tracker_proxy.register_files(self.name, list(self.files))
-                logger.info(f"Arquivos registrados no tracker: {self.files}")
+                #logger.info(f"Arquivos registrados no tracker: {self.files}")
             except Pyro5.errors.CommunicationError:
                 logger.error("Falha ao registrar arquivos no tracker")
                 self.current_tracker_uri = None
@@ -104,13 +106,13 @@ class Peer:
         if self.current_tracker_uri:
             try:
                 tracker_proxy = self.get_tracker_proxy(self.current_tracker_uri)
-                tracker_proxy.add_file(self.name, filename)
+                tracker_proxy.register_files(self.name, [filename])
             except Pyro5.errors.CommunicationError:
-                logger.error("Falha ao atualizar arquivo no tracker")
+                logger.error("Falha ao registrar arquivo no tracker")
 
-    def remove_file(self, filename):
+    def remove_peer_files(self):
         # with self.lock:
-        if filename in self.files:
+        for filename in list(self.files):
             self.files.remove(filename)
             if self.current_tracker_uri:
                 try:
@@ -153,23 +155,19 @@ class Peer:
 
         logger.info(f"Iniciando eleição para Época {self.tracker_epoch}")
 
-        with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-            peer_list = ns.list(prefix="Peer")
-
-        peers_to_request_vote = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
-
-        with ThreadPoolExecutor(max_workers=16) as executor:
-            results = list(executor.map(self.request_vote, peers_to_request_vote))
-
-        for r, p in zip(results, peers_to_request_vote):
-            match r:
-                case "accepted":
-                    total_votes += 1
-                    votes_received += 1
-                case "refused":
-                    total_votes += 1
-                case _:
-                    logger.warning(f"{self.name} falhou ao solicitar voto de {p}")
+        try:
+            with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
+                peer_list = ns.list(prefix="Peer")
+                for name, uri in peer_list.items():
+                    if name != f"Peer_{self.name}":
+                        match self.request_vote(uri):
+                            case "accepted":
+                                total_votes += 1
+                                votes_received += 1
+                            case "refused":
+                                total_votes += 1
+                            case _:
+                                logger.warning(f"{self.name} falhou ao solicitar voto de {name}")
 
             if self.is_elected(total_votes, votes_received):
                 self.become_tracker()
@@ -179,6 +177,9 @@ class Peer:
                 self.voted_in_epoch = -1
                 self.tracker_epoch -= 1
                 self.reset_tracker_timer()
+
+        except Pyro5.errors.NamingError:
+            logger.error("Serviço de nomes não disponível durante eleição")
 
     def request_vote(self, uri):
         with self.get_tracker_proxy(uri) as peer:
@@ -215,6 +216,10 @@ class Peer:
         except Pyro5.errors.NamingError:
             logger.error("Falha ao registrar como tracker no serviço de nomes")
 
+        # Registrar arquivos do peer no tracker
+        for file in self.files:
+            self.files_index[file].add(self.name)
+
         # Iniciar envio de heartbeats
         logger.debug("Iniciando envio de heartbeats para peers")
         self.start_heartbeat_sender()
@@ -227,25 +232,16 @@ class Peer:
         self.heartbeat_sender.start()
 
     def send_heartbeat(self):
-
-        def send_heartbeat_to_peer(uri):
-            with self.get_tracker_proxy(uri) as peer:
-                try:
-                    # logger.debug(f"Sending heartbeat to {uri}")
-                    peer.heartbeat_received(self.name, self.tracker_epoch)
-                except Exception as e:
-                    pass
-                    # logger.error(f"Falha ao enviar heartbeat para {uri}: {e}")
-
         try:
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
                 peer_list = ns.list(prefix="Peer")
-
-            peers_to_send_heartbeat = [uri for name, uri in peer_list.items() if name != f"Peer_{self.name}"]
-
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                executor.map(send_heartbeat_to_peer, peers_to_send_heartbeat)
-
+                for name, uri in peer_list.items():
+                    if name != f"Peer_{self.name}":
+                        peer = Pyro5.api.Proxy(uri)
+                        try:
+                            peer.heartbeat_received(self.name, self.tracker_epoch)
+                        except Pyro5.errors.CommunicationError:
+                            pass
         except Pyro5.errors.NamingError:
             logger.error("Serviço de nomes não disponível para enviar heartbeats")
 
@@ -264,7 +260,8 @@ class Peer:
                 tracker_uri = ns.lookup(f"Tracker_Epoca_{epoch}")
                 self.current_tracker_uri = tracker_uri
             logger.info(f"Atualizando tracker para {tracker_name} | Época {epoch}")
-            # threading.Thread(target=self.register_files_with_tracker).start()
+            self.register_files_with_tracker()
+            #threading.Thread(target=self.register_files_with_tracker).start()
 
         self.reset_tracker_timer()
 
@@ -274,24 +271,25 @@ class Peer:
     def register_files(self, peer_name, files):
         """Tracker method to register files from a peer"""
         # with self.lock:
+        logger.debug(f"Registrando arquivos do peer {peer_name}")
         for filename in files:
             if filename not in self.files_index:  # files_index is a defaultdict(set)
                 self.files_index[filename] = set()
             self.files_index[filename].add(peer_name)
 
-    @Pyro5.api.expose
-    def add_file(self, peer_name, filename):
-        """Tracker method to add a single file from a peer"""
-        # with self.lock:
-        self.files_index[filename].add(peer_name)
+    # @Pyro5.api.expose
+    # def add_file(self, peer_name, filename):
+    #     """Tracker method to add a single file from a peer"""
+    #     # with self.lock:
+    #     self.files_index[filename].add(peer_name)
 
     @Pyro5.api.expose
     def remove_file(self, peer_name, filename):
         # with self.lock:
-        if filename in self.files and peer_name in self.files[filename]:
-            self.files[filename].remove(peer_name)
-            if not self.files[filename]:
-                del self.files[filename]
+        if filename in self.files_index and peer_name in self.files_index[filename]:
+            self.files_index[filename].remove(peer_name)
+            if not self.files_index[filename]:
+                del self.files_index[filename]
 
     @Pyro5.api.expose
     def get_file_locations(self, filename):
@@ -302,65 +300,124 @@ class Peer:
     @Pyro5.api.expose
     def request_file(self, filename, peer_name):
         """Método chamado por outro peer para solicitar um arquivo"""
-        if filename in self.files:
+        if filename in list(self.files):
+            filepath = os.path.join(os.getcwd(), self.name, filename)
+            if not os.path.isfile(filepath):
+                logger.warning(f"Arquivo {filename} não encontrado no peer {self.name}")
+                return None
             # Simular transferência de arquivo
-            logger.info(f"Enviando arquivo {filename} para {peer_name}")
-            return f"Conteúdo do arquivo {filename}"
+            logger.info(f"Enviando arquivo {filename} de {peer_name}")
+            with open(filepath, "r") as f:
+                content = f.read()
+            return content
         raise Pyro5.errors.CommunicationError(f"Arquivo {filename} não encontrado")
 
-    def download_file(self, filename):
+    @Pyro5.api.expose
+    def list_files(self):
+        """Método para listar arquivos disponíveis no peer"""
+        return list(self.files_index.keys())
+
+    @Pyro5.api.expose
+    def list_peers_with_file(self, filename):
+        """Método para listar peers que possuem um arquivo específico"""
+        if filename in self.files_index:
+            return list(self.files_index[filename])
+        return []
+
+    def download_file(self, filename, peer_name):
         """Método para baixar um arquivo da rede P2P"""
-        if not self.current_tracker:
+        if not self.current_tracker_uri:
             logger.warning("Nenhum tracker disponível")
             return
 
         try:
-            # Consultar tracker
-            providers = self.current_tracker.get_file_locations(filename)
-            if not providers:
-                logger.warning(f"Arquivo {filename} não encontrado na rede")
-                return
-
-            # Escolher um provedor aleatório
-            provider_name = random.choice(providers)
-            if provider_name == self.name:
+            if filename in self.files:
                 logger.warning("Você já possui este arquivo")
                 return
 
             # Conectar ao peer e solicitar arquivo
             with Pyro5.api.locate_ns(NAMESERVER_HOSTNAME) as ns:
-                provider_uri = ns.lookup(f"Peer_{provider_name}")
+                provider_uri = ns.lookup(f"Peer_{peer_name}")
                 provider = Pyro5.api.Proxy(provider_uri)
                 content = provider.request_file(filename, self.name)
 
                 # Salvar arquivo localmente
                 self.add_file(filename)
-                logger.info(f"Arquivo {filename} baixado com sucesso de {provider_name}")
-                return content
+                logger.info(f"Arquivo {filename} baixado com sucesso de {peer_name}")                return content
         except Pyro5.errors.CommunicationError as e:
             logger.error(f"Falha ao baixar arquivo: {e}")
 
+    def start_random_files(self):
+        for i in range(3):
+            filename = f"arquivo_{self.name}_{i}.txt"
+            filepath = os.path.join(os.getcwd(), self.name, filename)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            generate_random_text_file(filepath, size=128)
+            self.add_file(filename) # Add file index
+
     def start_peer(self):
         """Inicia o peer e registra no serviço de nomes"""
+        # Adicionar alguns arquivos fictícios
+
         daemon = Pyro5.api.Daemon(host=PEER_HOSTNAME)
         self.uri = daemon.register(self)
-        self.register_with_nameserver(self.uri, f"Peer_{self.name}")  # Registrar no serviço de nomes
-        self.find_current_tracker()
-        self.reset_tracker_timer()  # Iniciar o timer de heartbeat
         logger.info(f"Peer {self.name} iniciado com URI: {self.uri}")
+        self.register_with_nameserver(self.uri, f"Peer_{self.name}")  # Registrar no serviço de nomes
 
-        # Adicionar alguns arquivos fictícios
-        for i in range(3):
-            self.add_file(self.name, f"arquivo_{self.name}_{i}.txt")
+        self.start_random_files()
 
-        daemon.requestLoop()
+        self.find_current_tracker()
 
+        self.reset_tracker_timer()  # Iniciar o timer de heartbeat
+
+        t = threading.Thread(target=daemon.requestLoop, daemon=True)
+        t.start()
+
+def interactive_cli(peer: Peer):
+    files = []
+    try:
+        while True:
+            choice = inquirer.list_input(
+                message="O que deseja fazer?",
+                choices=["Atualizar lista de arquivos", "Baixar Arquivo"],
+            )
+            tracker = Pyro5.api.Proxy(peer.current_tracker_uri)
+            if choice == "Atualizar lista de arquivos":
+                files = tracker.list_files()
+                if files:
+                    print("Arquivos disponíveis:")
+                    for i, file in enumerate(files):
+                        print(f"{i + 1}. {file}")
+                else:
+                    print("Nenhum arquivo disponível.")
+            elif choice == "Baixar Arquivo":
+                file_to_download = inquirer.list_input(
+                    message="Selecione um arquivo para baixar",
+                    choices=files,
+                )
+                peers_with_file = tracker.list_peers_with_file(file_to_download)
+                download_from_peer = inquirer.list_input(
+                    message="Selecione de qual peer baixar",
+                    choices=peers_with_file,
+                )
+                content = peer.download_file(file_to_download, download_from_peer)
+                if content:
+                    filepath = os.path.join(os.getcwd(), peer.name, file_to_download)
+                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                    with open(filepath, "w") as f:
+                        f.write(content)
+                else:
+                    print(f"Falha ao baixar o arquivo {file_to_download} de {download_from_peer}")
+    except KeyboardInterrupt:
+        logger.info("Encerrando CLI interativa...")
+        peer.remove_peer_files()
+        sys.exit(0)
 
 def main():
     if len(sys.argv) < 2:
         logger.info("Uso: python peer.py <nome_peer>")
         sys.exit(1)
-
     peer_name = sys.argv[1]
     peer = Peer(peer_name)
     peer.start_peer()
+    interactive_cli(peer)
