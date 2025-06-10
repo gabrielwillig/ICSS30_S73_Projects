@@ -134,7 +134,7 @@ class BookSvc:
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
             return {"status": "error", "message": str(e)}
-    
+
     def get_ticket_status(self, reservation_id):
         # Wait for a response from the queues
         try:
@@ -225,6 +225,10 @@ def create_flask_app(book_svc: BookSvc):
         if result.get("status") == "error" and result.get("message") == "Reservation ID not found":
             return jsonify(result), 404
         return jsonify(result), 200
+
+    @app.route("/health", methods=["GET"])
+    def health_check():
+        return jsonify({"status": "ok"}), 200
 
     return app
 

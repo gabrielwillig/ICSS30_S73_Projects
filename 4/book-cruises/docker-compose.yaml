@@ -10,8 +10,8 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U user -d book-cruises" ]
-      interval: 5s
+      test: [ "CMD-SHELL", "pg_isready -U user -d book-cruises > /dev/null" ]
+      interval: 30s
       timeout: 5s
       retries: 10
       start_period: 30s
@@ -64,8 +64,8 @@ services:
     networks:
       - default
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "check_running" ]
-      interval: 5s
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q check_running > /dev/null" ]
+      interval: 30s
       timeout: 5s
       retries: 20 # RabbitMQ can take time to start
       start_period: 30s
@@ -80,6 +80,12 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://book_svc:5001/health > /dev/null" ]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     ports:
       - "5001:5001"
     env_file:
@@ -101,7 +107,7 @@ services:
     restart: no
     depends_on:
       book_svc:
-        condition: service_started
+        condition: service_healthy
     env_file:
       - .env
     command: >
@@ -121,7 +127,7 @@ services:
     restart: no
     depends_on:
       book_svc:
-        condition: service_started
+        condition: service_healthy
     env_file:
       - .env
     command: >
@@ -141,7 +147,7 @@ services:
     restart: no
     depends_on:
       book_svc:
-        condition: service_started
+        condition: service_healthy
     env_file:
       - .env
     command: >
@@ -161,7 +167,7 @@ services:
     restart: no
     depends_on:
       book_svc:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "5000:5000"
     env_file:
