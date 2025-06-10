@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Book Cruises</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Book Cruises</h1>
+  <form id="searchForm">
+    <input name="departure_date" type="date" required />
+    <input name="departure_harbor" placeholder="Porto origem" required />
+    <input name="arrival_harbor" placeholder="Porto destino" required />
+    <button type="submit">Buscar</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th><th>Navio</th><th>Origem</th><th>Destino</th><th>Dias</th><th>Preço</th><th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tripsBody">
+      <!-- será preenchido pelo script.js -->
+    </tbody>
+  </table>
+
+  <h2>Promoções</h2>
+  <select id="promoDest">
+    <option value="">Geral</option>
+    <option value="miami">Miami</option>
+    <option value="nassau">Nassau</option>
+    <!-- … -->
+  </select>
+  <button id="btnSub">Inscrever</button>
+  <button id="btnUnsub">Cancelar</button>
+  <div id="promosContainer"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
