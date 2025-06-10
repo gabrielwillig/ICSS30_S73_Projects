@@ -55,7 +55,6 @@ class BookSvc:
 
     def create_reservation(self, reservation_dto: ReservationDTO):
         reservation: Reservation = reservation_dto.to_reservation()
-
         # Store the reservation status
         self.__add_new_reservation(reservation.id)
 
