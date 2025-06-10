@@ -3,7 +3,7 @@ from threading import Thread
 import time
 
 import inject
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 
 from book_cruises.commons.domains import Reservation
 from book_cruises.commons.utils import config, logger, cryptographer
@@ -89,9 +89,18 @@ def create_flask_app(payment_svc: PaymentSvc) -> Flask:
     def generate_link():
         reservation: Reservation = Reservation(**request.json)
 
-        payment_link = f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/pay/{reservation.id}"
+        payment_link = f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/pay?reservation_id={reservation.id}"
 
-        return jsonify({"payment_link": payment_link}), 200
+        return redirect(payment_link, code=302)
+
+    @app.route("/pay", methods=["GET"])
+    def pay():
+        return jsonify(
+            {
+                "message": "Payment processing is not implemented yet.",
+                "reservation_id": request.args.get("reservation_id"),
+            }
+        )
 
     return app
 

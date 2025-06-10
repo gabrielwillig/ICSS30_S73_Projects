@@ -30,17 +30,21 @@ class Database:
         try:
             with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(query, params)
-                if query.strip().lower().startswith("select"):
+
+                # If query returns data (e.g., SELECT or INSERT ... RETURNING)
+                if cursor.description:
                     result = cursor.fetchall()
-                    logger.debug(f"Query executed successfully: {query}")
-                    logger.debug(f"Rowcount: {cursor.rowcount} rows")
+                    logger.debug(f"Query returned data: {cursor.rowcount} row(s).")
                     return result
+
                 self.connection.commit()
+                logger.debug(f"Query executed: {cursor.rowcount} row(s) affected.")
+                return {"rowcount": cursor.rowcount}
         except Exception as e:
             logger.error(f"Failed to execute query: {e}")
             self.connection.rollback()
-            raise e
-    
+            raise
+
     def execute_many(self, query: str, data: list):
         try:
             with self.connection.cursor() as cursor:

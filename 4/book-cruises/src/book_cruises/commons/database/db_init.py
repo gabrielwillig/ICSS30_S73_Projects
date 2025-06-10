@@ -71,8 +71,8 @@ def initialize_itineraries_table(database: Database):
         # Insert dummy data into the database
         insert_data_query = """
         INSERT INTO itineraries (
-            ship, departure_date, departure_time, departure_harbor, 
-            arrival_harbor, arrival_date, 
+            ship, departure_date, departure_time, departure_harbor,
+            arrival_harbor, arrival_date,
             visiting_harbors, number_of_days, price
         ) VALUES %s;
         """
@@ -80,6 +80,24 @@ def initialize_itineraries_table(database: Database):
         logger.info("Dummy data inserted into the itineraries table.")
     else:
         logger.info("Itineraries table already contains data. Skipping data insertion.")
+
+def initialize_reservations_table(database: Database):
+    # Create the reservations table if it doesn't exist
+    create_table_query = """
+    CREATE TABLE IF NOT EXISTS reservations (
+        id SERIAL PRIMARY KEY,
+        client_id INT NOT NULL,
+        number_of_guests INT NOT NULL,
+        itinerary_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT transaction_timestamp(),
+        total_price DECIMAL(10, 2) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        FOREIGN KEY (itinerary_id) REFERENCES itineraries(id)
+    );
+    """
+    database.execute_query(create_table_query)
+
+    logger.info("Reservations table initialized.")
 
 
 def initialize_database():
@@ -94,6 +112,8 @@ def initialize_database():
 
     # Initialize each table
     initialize_itineraries_table(database)
+    initialize_reservations_table(database)
+
     database.close_connection()
 
 
