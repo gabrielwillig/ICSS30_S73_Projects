@@ -1,0 +1,1 @@
+from .marketing_svc import main

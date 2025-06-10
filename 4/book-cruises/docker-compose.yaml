@@ -1,0 +1,189 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: on-failure
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: book-cruises
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d book-cruises > /dev/null" ]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - default
+
+  db_init:
+    container_name: db_init
+    restart: no
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: 5432
+    command: >
+      sh -c " uv run -m src.book_cruises.commons.database.db_init; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: on-failure
+    depends_on:
+      db_init:
+        condition: service_started
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - default
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q check_running > /dev/null" ]
+      interval: 30s
+      timeout: 5s
+      retries: 20 # RabbitMQ can take time to start
+      start_period: 30s
+
+  book_svc:
+    container_name: book_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://book_svc:5001/health > /dev/null" ]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    command: >
+      sh -c " uv run book-svc; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
+
+  payment_svc:
+    container_name: payment_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      book_svc:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      sh -c " uv run payment-svc; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
+
+  ticket_svc:
+    container_name: ticket_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      book_svc:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      sh -c " uv run ticket-svc; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
+
+  marketing_svc:
+    container_name: marketing_svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      book_svc:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      sh -c " uv run marketing-svc; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
+
+  app:
+    container_name: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      book_svc:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    command: >
+      sh -c " uv run app; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
