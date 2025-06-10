@@ -89,7 +89,6 @@ def create_flask_app(payment_svc: PaymentSvc) -> Flask:
     def generate_link():
         reservation: Reservation = Reservation(**request.json)
 
-        # Generate a unique payment link (for simplicity, we use a random UUID)
         payment_link = f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/pay/{reservation.id}"
 
         return jsonify({"payment_link": payment_link}), 200

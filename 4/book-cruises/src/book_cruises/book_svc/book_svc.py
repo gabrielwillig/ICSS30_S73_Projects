@@ -75,7 +75,7 @@ class BookSvc:
             json=reservation.model_dump(),
             timeout=config.REQUEST_TIMEOUT,
         )
-        payment_link = payment_res.json().get("payment_link")
+        payment_link = payment_res.json()["payment_link"]
 
         logger.debug(f"Payment link for reservation {reservation.id}: {payment_link}")
 

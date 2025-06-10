@@ -49,23 +49,3 @@ class ReservationDTO(BaseModel):
             number_of_guests=self.number_of_guests,
             itinerary_id=self.itinerary_id
         )
-
-
-    # @staticmethod
-    # def from_dto(dto: "ReservationDTO") -> "Reservation":
-    #     return Reservation(
-    #         id=dto.id,
-    #         client_id=dto.client_id,
-    #         number_of_guests=dto.number_of_guests,
-    #         total_price=dto.total_price,
-    #         itinerary=Itinerary.from_dto(dto.itinerary) if dto.itinerary else None
-    #     )
-
-    # def to_dto(self) -> "ReservationDTO":
-    #     return ReservationDTO(
-    #         id=self.id,
-    #         client_id=self.client_id,
-    #         number_of_guests=self.number_of_guests,
-    #         total_price=self.total_price,
-    #         itinerary=self.itinerary.to_dto() if self.itinerary else None
-    #     )
