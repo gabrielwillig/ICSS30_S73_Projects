@@ -16,16 +16,13 @@ class RabbitMQProducer:
         self.password = password
         self.connection = None
         self.channel = None
-        self._lock = threading.Lock()
-        self._response_lock = threading.Lock()
         self.responses = {}
 
     def _ensure_channel(self):
-        with self._lock:
-            if not self.connection or self.connection.is_closed:
-                self.connection = create_connection(self.host, self.username, self.password)
-            if not self.channel or self.channel.is_closed:
-                self.channel = self.connection.channel()
+        if not self.connection or self.connection.is_closed:
+            self.connection = create_connection(self.host, self.username, self.password)
+        if not self.channel or self.channel.is_closed:
+            self.channel = self.connection.channel()
 
     def publish(self, routing_key: str, message: dict, exchange: str = ""):
         self._ensure_channel()
@@ -38,8 +35,7 @@ class RabbitMQProducer:
         self.close()
 
     def _on_response(self, ch, method, props, body):
-        with self._response_lock:
-            self.responses[props.correlation_id] = json.loads(body)
+        self.responses[props.correlation_id] = json.loads(body)
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def rpc_publish(self, routing_key: str, message: dict, timeout=5, exchange: str = ""):
@@ -79,12 +75,11 @@ class RabbitMQProducer:
         thread = threading.Thread(target=consumer_loop)
         thread.start()
         thread.join(timeout)
-        
+
         self.close()
 
-        with self._response_lock:
-            return self.responses.pop(correlation_id, None)
-        
+        return self.responses.pop(correlation_id, None)
+
 
     def close(self):
         if self.channel and self.channel.is_open:

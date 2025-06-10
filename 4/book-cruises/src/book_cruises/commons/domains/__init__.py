@@ -1,2 +1,2 @@
 from .itinerary import Itinerary, ItineraryDTO
-from .payment import Payment
+from .reservation import Reservation, ReservationDTO

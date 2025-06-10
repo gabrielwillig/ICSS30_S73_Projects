@@ -1,14 +1,16 @@
 import json
-import random
 import time
 import requests
 import uuid
+from datetime import datetime
+
 from flask import Flask, render_template, request, session, jsonify, Response, stream_with_context
+from pika.exceptions import ChannelWrongStateError
+
 from book_cruises.commons.utils import config, logger
-from book_cruises.commons.domains import Payment, Itinerary
+from book_cruises.commons.domains import Itinerary
 from book_cruises.commons.messaging import Producer, Consumer
 from .di import configure_dependencies, get_producer, get_consumer
-from pika.exceptions import ChannelWrongStateError
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -70,10 +72,14 @@ def payment():
         passengers = int(request.form.get("passengers", 1))
         payment_id = f"{trip_id}-{int(time.time())}"
 
-        payment_obj = Payment(
-            payment_id=payment_id, trip_id=trip_id, price=price, passengers=passengers
-        )
-        payment_info = payment_obj.dict()
+        payment_info = {
+            "payment_id": payment_id,
+            "trip_id": trip_id,
+            "price": price,
+            "passengers": passengers,
+            "status": "processing",
+            "created_at": datetime.now().isoformat(),
+        }
 
         # Make API call to create reservation
         response = requests.post(
@@ -101,7 +107,7 @@ def payment():
             price=price,
             payment_id=payment_id,
             passengers=passengers,
-            payment_status=payment_obj.status,
+            payment_status=payment_info["status"],
         )
     except Exception as e:
         logger.error(f"Failed to process payment: {e.with_traceback()}")
@@ -196,9 +202,9 @@ def subscribe_to_promotions(destination):
         consumer.queue_declare(queue_name)
 
         consumer.queue_bind(queue_name, config.PROMOTIONS_EXCHANGE, routing_key)
-        
+
         logger.info(f"Client {consumer_id} subscribed to promotions for {destination}")
-        
+
         try:
             while True:
                 method, props, body = consumer.basic_consume(queue_name)
@@ -208,7 +214,7 @@ def subscribe_to_promotions(destination):
                     consumer.channel.basic_ack(delivery_tag=method.delivery_tag)
                 else:
                     time.sleep(1)  # No message, wait a bit before checking again
-                
+
         except (GeneratorExit, ChannelWrongStateError):
             logger.info(f"Client unsubscribed from {destination} promotions")
         except Exception as e:
@@ -233,4 +239,4 @@ def subscribe_to_promotions(destination):
 
 def main():
     logger.info("Starting Flask app...")
-    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
+    app.run(host=config.APP_HOST, port=config.APP_PORT, debug=config.DEBUG)
