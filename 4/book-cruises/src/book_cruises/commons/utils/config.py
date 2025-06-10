@@ -25,8 +25,8 @@ class Config(BaseSettings):
     DEBUG: bool = True
 
     # App Configuration
-    APP_HOST: str = "localhost"
     APP_PORT: int = 5000
+    APP_HOST: str = "localhost"
 
     # Book Service Configuration
     BOOK_SVC_WEB_SERVER_PORT: int = 5001
@@ -42,6 +42,8 @@ class Config(BaseSettings):
     DB_USER: str = "user"
     DB_PASSWORD: str = "password"
     DB_PORT: int = 5432
+
+    REQUEST_TIMEOUT: int = 5  # Timeout for HTTP requests in seconds
 
     # Logging Configuration
     LOG_LEVEL: str = "DEBUG" if DEBUG else "INFO"  # Set to DEBUG if DEBUG is True, otherwise INFO

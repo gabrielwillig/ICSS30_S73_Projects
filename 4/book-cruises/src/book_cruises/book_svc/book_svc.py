@@ -55,6 +55,7 @@ class BookSvc:
 
     def create_reservation(self, reservation_dto: ReservationDTO):
         reservation: Reservation = reservation_dto.to_reservation()
+
         # Store the reservation status
         self.__add_new_reservation(reservation.id)
 
@@ -72,8 +73,9 @@ class BookSvc:
         payment_res = requests.post(
             f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/generate-link",
             json=reservation.model_dump(),
+            timeout=config.REQUEST_TIMEOUT,
         )
-        payment_link = payment_res.json().get("link")
+        payment_link = payment_res.json().get("payment_link")
 
         logger.debug(f"Payment link for reservation {reservation.id}: {payment_link}")
 

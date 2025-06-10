@@ -22,11 +22,11 @@ class Reservation(BaseModel):
         if reservation.itinerary_id is None:
             raise ValueError("Itinerary ID is required to retrieve itinerary details.")
 
-        itinerary = ItineraryRepository().get_by_id(reservation.itinerary_id)
-        if not itinerary:
-            raise ValueError(f"Itinerary with id {reservation.itinerary_id} not found.")
-
-        reservation.itinerary = itinerary
+        if not reservation.itinerary:
+            itinerary = ItineraryRepository().get_by_id(reservation.itinerary_id)
+            if not itinerary:
+                raise ValueError(f"Itinerary with id {reservation.itinerary_id} not found.")
+            reservation.itinerary = itinerary
         return reservation
 
     @model_validator(mode="after")
