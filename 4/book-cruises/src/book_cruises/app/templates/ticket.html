@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Your Cruise Ticket</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(to bottom, #0056b3, #007bff);
+            color: #fff;
+        }
+        .container {
+            margin-top: 50px;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .card-header {
+            background: #0056b3;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .card-body {
+            background: #f8f9fa;
+            color: #333;
+        }
+        .card-footer {
+            background: #e9ecef;
+            color: #555;
+        }
+        .btn-primary {
+            background: #0056b3;
+            border: none;
+        }
+        .btn-primary:hover {
+            background: #003d80;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border-left-color: #fff;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        .ticket-details {
+            font-size: 1.2rem;
+            margin-top: 20px;
+        }
+        .ticket-details span {
+            font-weight: bold;
+            color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+  <div class="container">
+    <div id="loading" class="text-center">
+      <h1>Generating Your Ticket</h1>
+      <div class="spinner"></div>
+      <p>Please wait while we generate your ticket...</p>
+    </div>
+    <div id="ticket" class="hidden">
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <div class="card shadow-lg">
+            <div class="card-header text-center">
+              Your Cruise Ticket
+            </div>
+            <div class="card-body text-center">
+              <p class="fw-bold">Trip ID:</p>
+              <h4 class="text-secondary mb-4" id="trip-id"></h4>
+              <div class="ticket-details">
+                <p><span>Passenger Name:</span> John Doe</p>
+                <p><span>Destination:</span> Bahamas</p>
+                <p><span>Departure Date:</span> 2025-05-01</p>
+                <p><span>Cabin:</span> Ocean View Suite</p>
+              </div>
+              <p class="lead">Thank you for booking with us! Your ticket has been issued successfully.</p>
+              <a href="/" class="btn btn-primary mt-3">Return Home</a>
+            </div>
+            <div class="card-footer text-center">
+              Have a great trip!
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let pollingActive = true; // Variable to control polling
+
+    // Poll ticket status periodically
+    function checkTicketStatus() {
+        if (!pollingActive) return; // Stop polling if inactive
+
+        fetch('/ticket/status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ticket_generated') {
+                    // Stop polling immediately
+                    pollingActive = false;
+
+                    // Hide loading and show ticket
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('ticket').classList.remove('hidden');
+
+                    // Populate ticket details dynamically
+                    const ticketData = data.ticket_data;
+                    document.getElementById('trip-id').textContent = ticketData.trip_id || "N/A";
+                    document.querySelector('.ticket-details').innerHTML = `
+                        <p><span>Passenger Name:</span> ${ticketData.passenger_name || "N/A"}</p>
+                        <p><span>Destination:</span> ${ticketData.destination || "N/A"}</p>
+                        <p><span>Departure Date:</span> ${ticketData.departure_date || "N/A"}</p>
+                        <p><span>Cabin:</span> ${ticketData.cabin || "N/A"}</p>
+                    `;
+                } else if (data.status === 'processing') {
+                    // Continue polling if still processing
+                    setTimeout(checkTicketStatus, 1000);
+                } else {
+                    console.error('Unexpected ticket status:', data.status);
+                }
+            })
+            .catch(error => {
+                console.error('Error checking ticket status:', error);
+                // Retry after a delay in case of error
+                if (pollingActive) {
+                    setTimeout(checkTicketStatus, 2000);
+                }
+            });
+    }
+
+    // Start polling with a delay to simulate latency
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(checkTicketStatus, 5000); // Add a 2-second delay before the first request
+    });
+  </script>
+</body>
+</html>
