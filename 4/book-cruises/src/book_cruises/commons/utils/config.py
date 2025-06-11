@@ -36,14 +36,18 @@ class Config(BaseSettings):
     PAYMENT_SVC_WEB_SERVER_PORT: int = 5002
     PAYMENT_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Payment Service web server
 
+    # External Payment Service Configuration
+    EXTERNAL_PAYMENT_SVC_PORT: int = 5003  # Port for the external payment service
+    EXTERNAL_PAYMENT_SVC_HOST: str = "localhost"  # Host for the external payment service
+
+    REQUEST_TIMEOUT: int = 5  # Timeout for HTTP requests in seconds
+
     # PostgreSQL Configuration
     DB_HOST: str = "localhost"
     DB_NAME: str = "book-cruises"
     DB_USER: str = "user"
     DB_PASSWORD: str = "password"
     DB_PORT: int = 5432
-
-    REQUEST_TIMEOUT: int = 5  # Timeout for HTTP requests in seconds
 
     # Logging Configuration
     LOG_LEVEL: str = "DEBUG" if DEBUG else "INFO"  # Set to DEBUG if DEBUG is True, otherwise INFO

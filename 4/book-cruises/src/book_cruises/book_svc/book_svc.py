@@ -72,7 +72,7 @@ class BookSvc:
 
         # Solicita link de pagamento ao MS Pagamento
         payment_res = requests.post(
-            f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/generate-link",
+            f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/payment/link",
             json=reservation.model_dump(),
             timeout=config.REQUEST_TIMEOUT,
         )

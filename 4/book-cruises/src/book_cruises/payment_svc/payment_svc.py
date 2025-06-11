@@ -1,106 +1,66 @@
-import random
-from threading import Thread
-import time
-
+import requests
 import inject
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, request, jsonify
 
-from book_cruises.commons.domains import Reservation
-from book_cruises.commons.utils import config, logger, cryptographer
-from book_cruises.commons.messaging import Consumer, Producer
+from book_cruises.commons.domains import Reservation, Payment
+from book_cruises.commons.utils import config, logger
+from book_cruises.commons.messaging import Producer
 from .di import configure_dependencies
 
 
 class PaymentSvc:
     @inject.autoparams()
-    def __init__(self, consumer: Consumer, producer: Producer):
-        self.__PAYMENT_PRIVATE_KEY_PATH = (
-            "src/book_cruises/payment_svc/private_keys/payment_svc_private_key.pem"
-        )
-        self.__private_key = cryptographer.load_private_key(
-            self.__PAYMENT_PRIVATE_KEY_PATH
-        )
-
-        self.__consumer: Consumer = consumer
+    def __init__(self, producer: Producer):
         self.__producer: Producer = producer
 
-        self.__thread_consumer = None
-
-    def run(self):
-        logger.info("Payment Service initialized")
-
-        self.__start_consumer_thread()
-
-    def __start_consumer_thread(self) -> None:
-        self.__thread_consumer = Thread(target=self.__target_consumer_thread)
-        self.__thread_consumer.start()
-
-    def __target_consumer_thread(self) -> None:
-        self.__consumer.register_callback(
-            config.RESERVE_CREATED_QUEUE, self.__process_payment
+    def generate_payment_link(self, reservation: Reservation) -> dict:
+        payment = Payment.create_payment(
+            total_price=reservation.total_price,
+            reservation_id=reservation.id,
+            itinerary_id=reservation.itinerary_id,
+            client_id=reservation.client_id,
         )
-        while True:
-            try:
-                self.__consumer.start_consuming()
-            except Exception as e:
-                logger.error(f"Error in thread_consumer: {e.with_traceback()}")
-                time.sleep(5)
 
-    def __process_payment(self, payment_data: dict) -> None:
-        logger.info(f"Processing payment with data: {payment_data}")
+        response = requests.post(
+            f"http://{config.EXTERNAL_PAYMENT_SVC_HOST}:{config.EXTERNAL_PAYMENT_SVC_PORT}/external/receives-payment",
+            json=payment.model_dump(),
+            timeout=config.REQUEST_TIMEOUT,
+        )
 
-        percentage = random.randint(0, 100)
-        # Simulate random success or failure
-        if percentage > 40:  # Randomly choose True (success) or False (failure)
-            logger.info("Payment approved")
+        return response.json()
 
-            message = {"status": "approved", "payment_data": payment_data}
-            signature = cryptographer.sign_message(message, self.__private_key)
-            mensage_signed = {
-                "message": message,
-                "signature": signature,
-            }
 
-            self.__producer.publish(
-                routing_key=config.APPROVED_PAYMENT_ROUTING_KEY,
-                message=mensage_signed,
-                exchange=config.APP_EXCHANGE,
-            )
-        else:
-            logger.error("Payment refused")
+    def handle_payment_status(self, payment: Payment) -> tuple[dict, int]:
+        match payment.status:
+            case "approved":
+                logger.info("payment approved")
+                routing_key = config.APPROVED_PAYMENT_ROUTING_KEY
+            case "refused":
+                logger.warning("payment refused")
+                routing_key = config.REFUSED_PAYMENT_QUEUE
+            case _:
+                return {"error": "unknown status"}, 400
 
-            message = {"status": "refused", "payment_data": payment_data}
-            signature = cryptographer.sign_message(message, self.__private_key)
-            mensage_signed = {
-                "message": message,
-                "signature": signature,
-            }
-
-            self.__producer.publish(
-                config.REFUSED_PAYMENT_QUEUE,
-                mensage_signed,
-            )
+        self.__producer.publish(
+            routing_key, payment.model_dump(), exchange=config.APP_EXCHANGE
+        )
+        return {"message": "status processed"}, 200
 
 
 def create_flask_app(payment_svc: PaymentSvc) -> Flask:
     app = Flask(__name__)
 
-    @app.route("/generate-link", methods=["POST"])
+    @app.route("/payment/link", methods=["POST"])
     def generate_link():
-        reservation: Reservation = Reservation(**request.json)
+        reservation = Reservation(**request.json)
+        response = payment_svc.generate_payment_link(reservation)
+        return jsonify(response), 201
 
-        payment_link = f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/pay?reservation_id={reservation.id}"
-
-        return redirect(payment_link, code=302)
-
-    @app.route("/pay", methods=["GET"])
-    def pay():
-        return jsonify(
-            {
-                "message": "Payment processing is not implemented yet.",
-                "reservation_id": request.args.get("reservation_id"),
-            }
-        )
+    @app.route("/payment/notify", methods=["POST"])
+    def update_payment_status():
+        payment: Payment = Payment(**request.json)
+        response, code = payment_svc.handle_payment_status(payment)
+        return jsonify(response), code
 
     return app
 
@@ -109,7 +69,6 @@ def main() -> None:
     configure_dependencies()
 
     payment_svc = PaymentSvc()
-    payment_svc.run()
 
     app = create_flask_app(payment_svc)
     app.run(

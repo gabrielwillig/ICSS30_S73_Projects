@@ -19,6 +19,7 @@ dependencies = [
 book-svc = "book_cruises.book_svc:main"
 marketing-svc = "book_cruises.marketing_svc:main"
 payment-svc = "book_cruises.payment_svc:main"
+external-payment-svc = "book_cruises.external_payment_svc:main"
 ticket-svc = "book_cruises.ticket_svc:main"
 app = "book_cruises.app:main"
 
