@@ -1,57 +1,438 @@
-const form = document.getElementById('searchForm');
-const tripsBody = document.getElementById('tripsBody');
-const promosContainer = document.getElementById('promosContainer');
-let es;
+// --- Elements for Cruise Search ---
+const departureHarborSelect = document.getElementById('departure_harbor');
+const arrivalHarborSelect = document.getElementById('arrival_harbor');
+const departureDateInput = document.getElementById('departure_date');
+const searchButton = document.getElementById('searchButton');
+const resultsArea = document.getElementById('resultsArea'); // Area for cruise search results
 
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const q = new URLSearchParams(new FormData(form));
-  const res = await fetch(`/api/itineraries?${q}`);
-  const trips = await res.json();
-  tripsBody.innerHTML = trips.map(t => `
-    <tr>
-      <td>${t.departure_date}</td>
-      <td>${t.ship}</td>
-      <td>${t.departure_harbor}</td>
-      <td>${t.arrival_harbor}</td>
-      <td>${t.number_of_days}</td>
-      <td>$${t.price}</td>
-      <td>
-        <button onclick="book('${t.id}',${t.price})">Reservar</button>
-        <button onclick="subscribeToDestination('${t.arrival_harbor}')">Inscrever</button>
-      </td>
-    </tr>
-  `).join('');
+// --- Elements for Promotion Subscription ---
+const promotionEmailInput = document.getElementById('promotion_email');
+const subscribeCheckbox = document.getElementById('subscribe_checkbox');
+const updateSubscriptionButton = document.getElementById('updateSubscriptionButton');
+const promotionsContainer = document.getElementById('promotions-container'); // Area for promotion cards
+
+// --- Elements for Booking Modal ---
+const bookingModal = document.getElementById('bookingModal');
+const closeButton = document.querySelector('.close-button');
+const modalItineraryId = document.getElementById('modal_itinerary_id');
+const modalMaxPassengers = document.getElementById('modal_max_passengers'); // New element for max passengers
+const modalMaxCabins = document.getElementById('modal_max_cabins');     // New element for max cabins
+const numPassengersInput = document.getElementById('num_passengers');
+const numCabinsInput = document.getElementById('num_cabins');
+const confirmBookingButton = document.getElementById('confirmBookingButton');
+const bookingResultArea = document.getElementById('bookingResultArea');
+
+// --- Elements for Cancel Reservation ---
+const cancelReservationCodeInput = document.getElementById('cancel_reservation_code');
+const cancelReservationButton = document.getElementById('cancelReservationButton');
+
+// --- General Message Area ---
+const messageArea = document.getElementById('messageArea');
+
+// Variable to hold the EventSource instance for SSE
+let eventSource = null;
+
+// Stores the currently selected itinerary ID for booking
+let currentBookingItineraryId = null;
+
+// Stores the fetched cruise data for quick lookup by itinerary ID
+let fetchedCruisesMap = new Map();
+
+// --- Helper Functions ---
+
+/**
+ * Displays a message in the designated message area.
+ * @param {string} message - The message text to display.
+ * @param {string} type - 'error' (red) or 'success' (green) or 'info' (blue) or 'neutral' (gray) for styling.
+ * @param {HTMLElement} [targetArea=messageArea] - The HTML element where the message should be displayed. Defaults to messageArea.
+ */
+function showMessage(message, type = 'error', targetArea = messageArea) {
+    targetArea.innerHTML = message; // Use innerHTML to allow for <a> tags in success messages
+    targetArea.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700', 'bg-gray-100', 'text-gray-700');
+    if (type === 'error') {
+        targetArea.classList.add('bg-red-100', 'text-red-700');
+    } else if (type === 'success') {
+        targetArea.classList.add('bg-green-100', 'text-green-700');
+    } else if (type === 'info') {
+        targetArea.classList.add('bg-blue-100', 'text-blue-700');
+    } else if (type === 'neutral') { // For general booking messages
+        targetArea.classList.add('bg-gray-100', 'text-gray-700');
+    }
+    targetArea.classList.remove('hidden');
+}
+
+/**
+ * Clears any message displayed in a target area.
+ * @param {HTMLElement} [targetArea=messageArea] - The HTML element whose messages should be cleared. Defaults to messageArea.
+ */
+function clearMessage(targetArea = messageArea) {
+    targetArea.classList.add('hidden');
+    targetArea.textContent = '';
+}
+
+/**
+ * Displays the cruise search results.
+ * @param {Array<Object>} cruises - An array of cruise objects to display.
+ */
+function displayCruises(cruises) {
+    resultsArea.innerHTML = ''; // Clear previous results
+    clearMessage(); // Clear any error messages from general message area
+
+    // Clear and populate the map with new cruise data
+    fetchedCruisesMap.clear();
+    cruises.forEach(cruise => {
+        fetchedCruisesMap.set(cruise.id, cruise);
+    });
+
+    if (cruises && cruises.length > 0) {
+        cruises.forEach(cruise => {
+            const cruiseCard = document.createElement('div');
+            cruiseCard.className = 'bg-white p-6 rounded-lg shadow-md border border-gray-200 transition-transform duration-200 hover:scale-[1.02]';
+            cruiseCard.innerHTML = `
+                <h3 class="text-xl font-bold text-gray-800 mb-2">${cruise.ship}</h3>
+                <p class="text-gray-600 mb-1">Itinerary ID: <span class="font-semibold">${cruise.id}</span></p>
+                <p class="text-gray-600 mb-1">Departure: <span class="font-semibold">${cruise.departure_harbor}</span></p>
+                <p class="text-gray-600 mb-1">Visits: <span class="font-semibold">${cruise.visiting_harbors.join(', ')}</span></p>
+                <p class="text-gray-600 mb-1">Duration: <span class="font-semibold">${cruise.number_of_days} days</span></p>
+                <p class="text-gray-600 mb-1">Departure Date: <span class="font-semibold">${cruise.departure_date}</span></p>
+                <p class="text-lg font-bold text-indigo-600 mt-3">Price: R$ ${cruise.price.toFixed(2)}</p>
+                <p class="text-sm text-gray-500 mt-2">Available Cabins: ${cruise.available_cabins} | Available Passengers: ${cruise.available_passengers}</p>
+                <button class="mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 book-now-btn" data-itinerary-id="${cruise.id}">
+                    Book Now
+                </button>
+            `;
+            resultsArea.appendChild(cruiseCard);
+        });
+
+        // Attach event listeners to the "Book Now" buttons
+        document.querySelectorAll('.book-now-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const itineraryId = event.target.dataset.itineraryId;
+                openBookingModal(itineraryId);
+            });
+        });
+
+    } else {
+        showMessage('No itineraries found for the selected search criteria.', 'info');
+    }
+}
+
+/**
+ * Adds a new promotion card to the promotions container.
+ * @param {Object} promotion - The promotion object received via SSE.
+ */
+function addPromotionCard(promotion) {
+    // Clear initial SSE connection message if present
+    if (promotionsContainer.querySelector('#initial-sse-message')) {
+        promotionsContainer.querySelector('#initial-sse-message').remove();
+    }
+
+    const card = document.createElement('div');
+    card.className = 'promotion-card bg-white p-6 rounded-lg shadow-lg border border-red-200 mb-4 transform transition-transform duration-300 hover:scale-[1.01]';
+
+    card.innerHTML = `
+        <div class="discount text-white bg-red-500 py-1 px-3 rounded-br-lg font-bold absolute top-0 right-0 transform rotate-3 translate-x-4 -translate-y-2 shadow-md">
+            -${promotion.discount}%
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">${promotion.title}</h3>
+        <p class="text-gray-700 mb-3">${promotion.description}</p>
+        <div class="flex items-baseline mb-2">
+            <span class="original-price text-gray-500 line-through mr-2 text-sm">R$ ${promotion.original_price.toFixed(2)}</span>
+            <span class="discounted-price text-red-600 font-extrabold text-2xl">R$ ${promotion.discounted_price.toFixed(2)}</span>
+        </div>
+        <p class="text-gray-600 text-sm mb-1">Departure Date: <span class="font-semibold">${promotion.departure_date}</span></p>
+        <p class="text-gray-600 text-xs mt-2">Offer expires in <span class="font-semibold">${promotion.expires_in} hours</span></p>
+        <button class="mt-4 w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">
+            View Deal
+        </button>
+    `;
+
+    // Add to container, newest on top
+    promotionsContainer.prepend(card);
+
+    // Limit the number of promotion cards to prevent infinite growth
+    while (promotionsContainer.children.length > 5) { // Keep max 5 promotions
+        promotionsContainer.removeChild(promotionsContainer.lastChild);
+    }
+}
+
+
+/**
+ * Establishes an SSE connection for a given email.
+ * @param {string} email - The email to use for the SSE connection.
+ */
+function connectSSE(email) {
+    if (eventSource) {
+        eventSource.close(); // Close existing connection before opening a new one
+        console.log('Existing SSE connection closed.');
+    }
+
+    // Pass email as a query parameter for the SSE endpoint
+    eventSource = new EventSource(`/api/promotions/sse?email=${encodeURIComponent(email)}`);
+
+    eventSource.onopen = () => {
+        console.log('SSE connection opened.');
+        showMessage('Connected to promotion stream. Waiting for promotions...', 'info');
+        // Initial message for promotions container
+        promotionsContainer.innerHTML = `<p id="initial-sse-message" class="text-gray-600 text-center">Connecting to promotions stream...</p>`;
+    };
+
+    eventSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.message === "SSE connection established.") {
+                console.log(data.message); // Log initial connection message
+            } else {
+                addPromotionCard(data); // Add promotion card to UI
+            }
+        } catch (e) {
+            console.error('Error parsing SSE message:', e, event.data);
+        }
+    };
+
+    eventSource.onerror = (error) => {
+        console.error('SSE Error:', error);
+        showMessage('Error receiving promotions. Please check your subscription status or try again later.', 'error');
+        eventSource.close(); // Close on error to prevent continuous retries
+        eventSource = null;
+        // Also uncheck the checkbox if there's an error
+        subscribeCheckbox.checked = false;
+        // Optionally update the UI to reflect connection status
+    };
+}
+
+/**
+ * Closes the existing SSE connection.
+ */
+function disconnectSSE() {
+    if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+        console.log('SSE connection closed.');
+        showMessage('Disconnected from promotion stream.', 'info');
+        promotionsContainer.innerHTML = `<p class="text-gray-600 text-center">Disconnected from promotions.</p>`;
+    }
+}
+
+/**
+ * Opens the booking modal for a specific itinerary.
+ * @param {string} itineraryId - The ID of the itinerary to book.
+ */
+function openBookingModal(itineraryId) {
+    currentBookingItineraryId = itineraryId;
+    modalItineraryId.textContent = itineraryId;
+
+    const cruise = fetchedCruisesMap.get(itineraryId);
+    if (cruise) {
+        modalMaxPassengers.textContent = cruise.available_passengers;
+        modalMaxCabins.textContent = cruise.available_cabins;
+
+        // Set max attribute for input fields to prevent exceeding available
+        numPassengersInput.max = cruise.available_passengers;
+        numCabinsInput.max = cruise.available_cabins;
+        numPassengersInput.value = 1; // Reset to default
+        numCabinsInput.value = 1;     // Reset to default
+
+        // Optional: Add client-side visual validation (e.g., if value > max)
+        numPassengersInput.addEventListener('input', () => {
+            if (parseInt(numPassengersInput.value) > cruise.available_passengers) {
+                numPassengersInput.value = cruise.available_passengers;
+            }
+            if (parseInt(numPassengersInput.value) < 1) { // Ensure at least 1
+                numPassengersInput.value = 1;
+            }
+        });
+        numCabinsInput.addEventListener('input', () => {
+            if (parseInt(numCabinsInput.value) > cruise.available_cabins) {
+                numCabinsInput.value = cruise.available_cabins;
+            }
+            if (parseInt(numCabinsInput.value) < 1) { // Ensure at least 1
+                numCabinsInput.value = 1;
+            }
+        });
+
+    } else {
+        console.error(`Cruise data not found for itinerary ID: ${itineraryId}`);
+        showMessage('Error: Cruise details not found. Please try searching again.', 'error');
+        closeBookingModal();
+        return;
+    }
+
+    clearMessage(bookingResultArea); // Clear previous booking messages
+    bookingModal.style.display = 'flex'; // Use flex to center
+}
+
+/**
+ * Closes the booking modal.
+ */
+function closeBookingModal() {
+    bookingModal.style.display = 'none';
+    currentBookingItineraryId = null;
+}
+
+// --- Event Listeners ---
+
+// Event listener for Cruise Search Button
+searchButton.addEventListener('click', async () => {
+    const departure_harbor = departureHarborSelect.value;
+    const arrival_harbor = arrivalHarborSelect.value;
+    const departure_date = departureDateInput.value;
+
+    if (!departure_harbor || !arrival_harbor || !departure_date) {
+        showMessage('Please fill in all fields to search for cruises.');
+        return;
+    }
+
+    try {
+        const response = await axios.get('/api/cruises', {
+            params: {
+                departure_harbor: departure_harbor,
+                arrival_harbor: arrival_harbor,
+                departure_date: departure_date
+            }
+        });
+        displayCruises(response.data);
+    }
+    catch (error) {
+        console.error('Error searching for cruises:', error);
+        if (error.response && error.response.data && error.response.data.error) {
+            showMessage(`Error: ${error.response.data.error}`);
+        } else {
+            showMessage('Error connecting to the server or searching for cruises. Please try again later.');
+        }
+        resultsArea.innerHTML = '';
+    }
 });
 
-async function book(trip_id, price) {
-  const res = await fetch('/api/reservations', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({trip_id, price, passengers:1})
-  });
-  const { reservation_id } = await res.json();
-  alert(`Reserva criada: ${reservation_id}`);
-}
+// Event listener for Update Subscription Button
+updateSubscriptionButton.addEventListener('click', async () => {
+    const email = promotionEmailInput.value.trim();
+    if (!email) {
+        showMessage('Please enter an email to update your subscription.', 'error');
+        // Uncheck the box if email is empty and user tries to subscribe
+        if (subscribeCheckbox.checked) {
+            subscribeCheckbox.checked = false;
+        }
+        return;
+    }
 
-function subscribeToDestination(dest) {
-  if (es) es.close();
-  promosContainer.innerHTML = '';
-  es = new EventSource(`/api/promotions/subscribe/${dest.toLowerCase()||''}`);
-  es.onmessage = e => {
-    const p = JSON.parse(e.data);
-    const card = document.createElement('div');
-    card.innerHTML = `
-      <div class="promotion-card">
-        <span class="discount">${p.discount}% OFF</span>
-        <h3>${p.destination}</h3>
-        <p>${p.description}</p>
-        <p class="expiry">Expira em ${p.expires_in}</p>
-      </div>`;
-    promosContainer.prepend(card);
-  };
-}
+    try {
+        if (subscribeCheckbox.checked) {
+            // User wants to subscribe
+            const response = await axios.post('/api/promotions/subscribe', { email });
+            showMessage(response.data.message, 'success');
+            console.log('Subscription response:', response.data.message);
+            // Connect SSE only if subscription is successful
+            connectSSE(email);
+        } else {
+            // User wants to unsubscribe
+            const response = await axios.post('/api/promotions/unsubscribe', { email });
+            showMessage(response.data.message, 'success');
+            console.log('Unsubscription response:', response.data.message);
+            // Disconnect SSE only if unsubscription is successful
+            disconnectSSE();
+        }
+    } catch (error) {
+        console.error('Error updating subscription:', error);
+        if (error.response && error.response.data && error.response.data.error) {
+            showMessage(`Error: ${error.response.data.error}`, 'error');
+        } else {
+            showMessage('Error communicating with the server regarding subscription. Please try again later.', 'error');
+        }
+        // If an error occurs, revert the checkbox state to reflect actual status
+        subscribeCheckbox.checked = !subscribeCheckbox.checked;
+    }
+});
 
-document.getElementById('btnUnsub').onclick = () => {
-  if (es) es.close();
-};
+// Event listener for checkbox state change (for convenience, also triggers update)
+subscribeCheckbox.addEventListener('change', () => {
+    // For now, it will simply log the state change.
+    console.log(`Subscribe checkbox changed to: ${subscribeCheckbox.checked}`);
+});
+
+// Event listener for Confirm Booking Button
+confirmBookingButton.addEventListener('click', async () => {
+    const itinerary_id = currentBookingItineraryId;
+    const num_passengers = parseInt(numPassengersInput.value, 10);
+    const num_cabins = parseInt(numCabinsInput.value, 10);
+
+    const cruise = fetchedCruisesMap.get(itinerary_id);
+
+    // Client-side validation against available_passengers and available_cabins
+    if (num_passengers > cruise.available_passengers || num_cabins > cruise.available_cabins) {
+        showMessage('Booking quantity exceeds available capacity. Please adjust.', 'error', bookingResultArea);
+        return;
+    }
+
+    if (!itinerary_id || isNaN(num_passengers) || num_passengers <= 0 || isNaN(num_cabins) || num_cabins <= 0) {
+        showMessage('Please enter valid numbers for passengers and cabins.', 'error', bookingResultArea);
+        return;
+    }
+
+    try {
+        const response = await axios.post('/api/book-cruise', {
+            itinerary_id,
+            num_passengers,
+            num_cabins
+        });
+        showMessage(`Booking successful! Reservation Code: ${response.data.reservation_code}. Payment Link: <a href="${response.data.payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
+
+        // Optionally close modal after successful booking
+        // setTimeout(closeBookingModal, 5000); // Close after 5 seconds
+    } catch (error) {
+        console.error('Error booking cruise:', error);
+        if (error.response && error.response.data && error.response.data.error) {
+            showMessage(`Error booking: ${error.response.data.error}`, 'error', bookingResultArea);
+        } else {
+            showMessage('Error communicating with the server to book cruise. Please try again later.', 'error', bookingResultArea);
+        }
+    }
+});
+
+// Event listener for Cancel Reservation Button
+cancelReservationButton.addEventListener('click', async () => {
+    const reservation_code = cancelReservationCodeInput.value.trim();
+
+    if (!reservation_code) {
+        showMessage('Please enter a reservation code to cancel.', 'error');
+        return;
+    }
+
+    try {
+        const response = await axios.post('/api/cancel-reservation', { reservation_code });
+        showMessage(response.data.message, 'success');
+        console.log('Cancellation response:', response.data.message);
+        cancelReservationCodeInput.value = ''; // Clear input on success
+    } catch (error) {
+        console.error('Error cancelling reservation:', error);
+        if (error.response && error.response.data && error.response.data.error) {
+            showMessage(`Error cancelling: ${error.response.data.error}`, 'error');
+        } else {
+            showMessage('Error communicating with the server to cancel reservation. Please try again later.', 'error');
+        }
+    }
+});
+
+
+// Event listeners for modal close button and clicking outside the modal
+closeButton.addEventListener('click', closeBookingModal);
+window.addEventListener('click', (event) => {
+    if (event.target === bookingModal) {
+        closeBookingModal();
+    }
+});
+
+
+// --- Initial Setup ---
+
+// Pre-fills the departure date with the current date when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    departureDateInput.value = `${year}-${month}-${day}`;
+
+    // Initial state for promotions container
+    promotionsContainer.innerHTML = `<p class="text-gray-600 text-center">Enter your email and check "Subscribe" to receive promotions.</p>`;
+});

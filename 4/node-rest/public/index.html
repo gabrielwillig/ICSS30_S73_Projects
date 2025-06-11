@@ -1,41 +1,211 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Book Cruises</title>
-  <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Cruises</title>
+    <!-- Inclui o Tailwind CSS via CDN para estilos rápidos e responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Define a fonte Inter como padrão para a aplicação -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Additional styles for promotion cards */
+        .promotion-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .promotion-card .discount {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background-color: #ef4444; /* red-500 */
+            color: white;
+            padding: 0.5rem 1rem;
+            font-weight: bold;
+            border-bottom-left-radius: 0.75rem; /* rounded-bl-lg */
+            transform: rotate(5deg) translate(10%, -10%);
+            transform-origin: top right;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        /* Styles for the booking modal */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1000; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto; /* Center modal */
+            padding: 2.5rem; /* Increased padding */
+            border-radius: 1rem; /* More rounded corners */
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); /* Stronger shadow */
+            width: 90%; /* Responsive width */
+            max-width: 500px; /* Max width for larger screens */
+            position: relative;
+            animation-name: animatetop;
+            animation-duration: 0.4s;
+        }
+        @keyframes animatetop {
+            from {top: -300px; opacity: 0}
+            to {top: 0; opacity: 1}
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #333;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+    <!-- Links your custom CSS file for additional styles, if needed -->
+    <link rel="stylesheet" href="styles.css">
 </head>
-<body>
-  <h1>Book Cruises</h1>
-  <form id="searchForm">
-    <input name="departure_date" type="date" required />
-    <input name="departure_harbor" placeholder="Porto origem" required />
-    <input name="arrival_harbor" placeholder="Porto destino" required />
-    <button type="submit">Buscar</button>
-  </form>
+<body class="bg-gradient-to-r from-blue-500 to-indigo-600 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl transform transition-all duration-300 hover:scale-105">
+        <h1 class="text-4xl font-extrabold text-center text-gray-900 mb-8">
+            <span class="block">Book Your Cruise</span>
+            <span class="block text-xl font-medium text-indigo-700 mt-2">Your Journey Starts Here</span>
+        </h1>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Data</th><th>Navio</th><th>Origem</th><th>Destino</th><th>Dias</th><th>Preço</th><th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="tripsBody">
-      <!-- será preenchido pelo script.js -->
-    </tbody>
-  </table>
+        <!-- Search Cruise Section -->
+        <div class="space-y-6 mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Find Cruises</h2>
+            <!-- Departure Harbor Selection -->
+            <div>
+                <label for="departure_harbor" class="block text-sm font-medium text-gray-700 mb-2">Departure Harbor:</label>
+                <select id="departure_harbor" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm">
+                    <option value="">Select a harbor</option>
+                    <option value="Miami">Miami</option>
+                    <option value="Nassau">Nassau</option>
+                    <option value="San Juan">San Juan</option>
+                    <option value="Kingston">Kingston</option>
+                    <option value="Havana">Havana</option>
+                </select>
+            </div>
 
-  <h2>Promoções</h2>
-  <select id="promoDest">
-    <option value="">Geral</option>
-    <option value="miami">Miami</option>
-    <option value="nassau">Nassau</option>
-    <!-- … -->
-  </select>
-  <button id="btnSub">Inscrever</button>
-  <button id="btnUnsub">Cancelar</button>
-  <div id="promosContainer"></div>
+            <!-- Arrival Harbor Selection -->
+            <div>
+                <label for="arrival_harbor" class="block text-sm font-medium text-gray-700 mb-2">Arrival Harbor:</label>
+                <select id="arrival_harbor" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm">
+                    <option value="">Select a harbor</option>
+                    <option value="Miami">Miami</option>
+                    <option value="Nassau">Nassau</option>
+                    <option value="San Juan">San Juan</option>
+                    <option value="Kingston">Kingston</option>
+                    <option value="Havana">Havana</option>
+                </select>
+            </div>
 
-  <script src="script.js"></script>
+            <!-- Departure Date Input -->
+            <div>
+                <label for="departure_date" class="block text-sm font-medium text-gray-700 mb-2">Departure Date:</label>
+                <input type="date" id="departure_date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+
+            <!-- Search Button -->
+            <button id="searchButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 transform hover:scale-100">
+                Search Cruises
+            </button>
+        </div>
+
+        <!-- Cancel Reservation Section -->
+        <div class="space-y-6 mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Cancel Reservation</h2>
+            <div>
+                <label for="cancel_reservation_code" class="block text-sm font-medium text-gray-700 mb-2">Reservation Code:</label>
+                <input type="text" id="cancel_reservation_code" placeholder="Enter reservation code" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+            <button id="cancelReservationButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-semibold text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-300 transform hover:scale-100">
+                Cancel Reservation
+            </button>
+        </div>
+
+        <!-- Promotions Section -->
+        <div class="space-y-6 mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Promotion Notifications</h2>
+            <div>
+                <label for="promotion_email" class="block text-sm font-medium text-gray-700 mb-2">Your Email:</label>
+                <input type="email" id="promotion_email" placeholder="enter your email to subscribe" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            </div>
+            <div class="flex items-center mt-4">
+                <input id="subscribe_checkbox" type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                <label for="subscribe_checkbox" class="ml-2 block text-sm text-gray-900">
+                    Subscribe to Promotions
+                </label>
+            </div>
+            <button id="updateSubscriptionButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-semibold text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300 transform hover:scale-100">
+                Update Subscription
+            </button>
+        </div>
+
+        <!-- Area for general messages (errors or no itineraries found) -->
+        <div id="messageArea" class="mt-6 p-4 rounded-md text-center text-red-700 bg-red-100 hidden" role="alert">
+            <!-- Messages will be inserted here via JavaScript -->
+        </div>
+
+        <!-- Area to display cruise search results -->
+        <div id="resultsArea" class="mt-8 space-y-6">
+            <!-- Cruise results will be inserted here via JavaScript -->
+        </div>
+
+        <!-- Area to display promotion cards -->
+        <div id="promotions-container" class="mt-8 space-y-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Live Promotions</h2>
+            <!-- Promotion cards will be inserted here via JavaScript -->
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div id="bookingModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Book Cruise</h2>
+            <div class="space-y-4">
+                <p class="text-gray-700">Booking for Itinerary ID: <span id="modal_itinerary_id" class="font-semibold"></span></p>
+                <p class="text-gray-600 text-sm">Max Passengers: <span id="modal_max_passengers" class="font-semibold"></span> | Max Cabins: <span id="modal_max_cabins" class="font-semibold"></span></p>
+
+                <div>
+                    <label for="num_passengers" class="block text-sm font-medium text-gray-700 mb-2">Number of Passengers:</label>
+                    <input type="number" id="num_passengers" min="1" value="1" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+
+                <div>
+                    <label for="num_cabins" class="block text-sm font-medium text-gray-700 mb-2">Number of Cabins:</label>
+                    <input type="number" id="num_cabins" min="1" value="1" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+
+                <button id="confirmBookingButton" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300">
+                    Confirm Booking
+                </button>
+            </div>
+            <!-- Booking result display -->
+            <div id="bookingResultArea" class="mt-6 p-4 rounded-md text-center text-gray-700 bg-gray-100 hidden">
+                <!-- Booking results will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Includes Axios via CDN for HTTP requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- Links your JavaScript file for page behavior -->
+    <script src="script.js"></script>
 </body>
 </html>
