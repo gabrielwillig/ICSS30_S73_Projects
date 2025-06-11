@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify
 
 from book_cruises.commons.utils import config, logger, cryptographer
 from book_cruises.commons.messaging import Consumer, Producer
-from book_cruises.commons.domains import ItineraryDTO, Reservation, ReservationDTO
+from book_cruises.commons.domains import ItineraryDTO, Reservation, ReservationDTO, Payment
 from book_cruises.commons.domains.repositories import ItineraryRepository, ReservationRepository
 from .di import configure_dependencies
 
@@ -17,12 +17,6 @@ class BookSvc:
 
     @inject.autoparams()
     def __init__(self, consumer: Consumer, producer: Producer):
-        self.__PAYMENT_PUBLIC_KEY_PATH = (
-            "src/book_cruises/book_svc/public_keys/payment_svc_public_key.pem"
-        )
-        self.__payment_public_key = cryptographer.load_public_key(
-            self.__PAYMENT_PUBLIC_KEY_PATH
-        )
 
         self.__consumer: Consumer = consumer
         self.__producer: Producer = producer
@@ -38,9 +32,6 @@ class BookSvc:
         logger.info("Book Service initialized")
         self.__config_broker()
 
-        self.__consumer.register_callback(
-            config.QUERY_RESERVATION_QUEUE, self.__query_itinerary
-        )
         self.__consumer.register_callback(
             config.REFUSED_PAYMENT_QUEUE, self.__process_payment
         )
@@ -61,13 +52,13 @@ class BookSvc:
         self.__add_new_reservation(reservation.id)
 
         # Publish the reservation data to the RESERVE_CREATED_QUEUE
-        self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation.model_dump_json())
+        self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation.model_dump())
         if self.__first_time:
-            self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation.model_dump_json())
+            self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation.model_dump())
             self.__first_time = False
 
         logger.debug(
-            f"Published reservation {reservation.model_dump_json()} to {config.RESERVE_CREATED_QUEUE}"
+            f"Published reservation {reservation.model_dump()} to {config.RESERVE_CREATED_QUEUE}"
         )
 
         # Solicita link de pagamento ao MS Pagamento
@@ -119,42 +110,25 @@ class BookSvc:
             logger.error(f"Failed to process message: {e}")
             return {"status": "error", "message": str(e)}
 
-    def __add_new_reservation(self, reservation_id: str) -> None:
-        self.__reservation_statuses[reservation_id] = {
+    def __add_new_reservation(self, reservation: Reservation) -> None:
+        self.__reservation_statuses[reservation.id] = {
             "payment": "waiting",
             "ticket": "waiting",
         }
-        logger.info(f"Added new reservation: {reservation_id}")
+        logger.info(f"Added new reservation: {reservation.id}")
 
     def __update_reservation_payment_status(
-        self, reservation_id: str, status: str
+        self, payment: Payment
     ) -> None:
         logger.debug(f"__reservation_statuses: {self.__reservation_statuses}")
-        self.__reservation_statuses[reservation_id]["payment"] = status
-        logger.info(f"Update reservation status: {reservation_id} -> {status}")
+        self.__reservation_statuses[payment.reservation_id]["payment"] = payment.status
+        logger.info(f"Update reservation status: {payment.reservation_id} -> {payment.status}")
 
     def __update_reservation_ticket_status(
         self, reservation_id: str, status: str
     ) -> None:
         self.__reservation_statuses[reservation_id]["ticket"] = status
         logger.info(f"Update reservation status: {reservation_id} -> {status}")
-
-    def __query_itinerary(self, itinerary_data: dict) -> list:
-        try:
-            itinerary_dto = ItineraryDTO(**itinerary_data)
-
-            itineraries = self.__itinerary_repository.get_itineraries(itinerary_dto)
-            logger.debug(f"Available itineraries: {itineraries}")
-
-            list_itineraries_dict = []
-            for itinerary in itineraries:
-                itinerary_json = itinerary.model_dump_json()
-                list_itineraries_dict.append(json.loads(itinerary_json))
-
-            return list_itineraries_dict
-
-        except Exception as e:
-            logger.error(f"Failed to process message: {e}")
 
     def __process_ticket(self, payment_data: dict) -> None:
         self.__update_reservation_ticket_status(
@@ -163,32 +137,19 @@ class BookSvc:
         )
 
     def __process_payment(self, payment_data: dict) -> None:
-        logger.info(f"instance id {id(self)}")
-        signature_is_valid = cryptographer.verify_signature(
-            payment_data["message"],
-            payment_data["signature"],
-            self.__payment_public_key,
-        )
-        if not signature_is_valid:
-            logger.error("Invalid signature")
-            raise NotImplementedError("Invalid signature")
+        payment: Payment = Payment(**payment_data)
 
-        message = payment_data["message"]
-        status = message["status"]
-
-        match status:
+        match payment.status:
             case "approved":
-                logger.info(f"Processing approved payment with data: {message}")
                 self.__update_reservation_payment_status(
-                    message["payment_data"]["reservation_id"], "approved"
+                    payment
                 )
             case "refused":
-                logger.error(f"Processing refused payment with data: {message}")
                 self.__update_reservation_payment_status(
-                    message["payment_data"]["reservation_id"], "refused"
+                    payment
                 )
             case _:
-                logger.error(f"Unknown status: {status}")
+                logger.error(f"Unknown status: {payment.status}")
 
     def __target_consumer_thread(self) -> None:
         while True:
@@ -205,7 +166,6 @@ class BookSvc:
     def __config_broker(self) -> None:
         self.__consumer.exchange_declare(config.APP_EXCHANGE, "direct", durable=False)
 
-        self.__consumer.queue_declare(config.QUERY_RESERVATION_QUEUE, durable=False)
         self.__consumer.queue_declare(config.RESERVE_CREATED_QUEUE, durable=False)
         self.__consumer.queue_declare(
             config.APPROVED_PAYMENT_TICKET_QUEUE, durable=False
@@ -230,6 +190,13 @@ class BookSvc:
 
 def create_flask_app(book_svc: BookSvc) -> Flask:
     app = Flask(__name__)
+
+    @app.route("/book/get-itineraries", methods=["POST"])
+    def get_itineraries():
+        itinerary_data = request.json
+        response = requests.post(config.ITINERARY_SVC_URL + "/itinerary/get-itineraries", json=itinerary_data, timeout=config.REQUEST_TIMEOUT)
+
+        return jsonify(response.json()), response.status_code
 
     @app.route("/create_reservation", methods=["POST"])
     def create_reservation():

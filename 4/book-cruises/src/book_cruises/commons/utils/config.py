@@ -40,6 +40,11 @@ class Config(BaseSettings):
     EXTERNAL_PAYMENT_SVC_PORT: int = 5003  # Port for the external payment service
     EXTERNAL_PAYMENT_SVC_HOST: str = "localhost"  # Host for the external payment service
 
+    ITINERARY_SVC_WEB_SERVER_PORT: int = 5004  # Port for the Itinerary Service web server
+    ITINERARY_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Itinerary Service web server
+    ITINERARY_SVC_URL: str = f"http://{ITINERARY_SVC_WEB_SERVER_HOST}:{ITINERARY_SVC_WEB_SERVER_PORT}"
+
+
     REQUEST_TIMEOUT: int = 5  # Timeout for HTTP requests in seconds
 
     # PostgreSQL Configuration

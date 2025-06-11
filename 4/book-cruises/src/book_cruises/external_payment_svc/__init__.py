@@ -1,1 +1,1 @@
-from .external_service import main
+from .external_payment_svc import main

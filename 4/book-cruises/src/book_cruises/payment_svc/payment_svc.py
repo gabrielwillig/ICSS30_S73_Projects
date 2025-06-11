@@ -34,16 +34,19 @@ class PaymentSvc:
         match payment.status:
             case "approved":
                 logger.info("payment approved")
-                routing_key = config.APPROVED_PAYMENT_ROUTING_KEY
+                self.__producer.publish(
+                    config.APPROVED_PAYMENT_ROUTING_KEY, payment.model_dump(), config.APP_EXCHANGE
+                )
             case "refused":
                 logger.warning("payment refused")
-                routing_key = config.REFUSED_PAYMENT_QUEUE
+                self.__producer.publish(
+                    config.REFUSED_PAYMENT_QUEUE, payment.model_dump()
+                )
             case _:
                 return {"error": "unknown status"}, 400
 
-        self.__producer.publish(
-            routing_key, payment.model_dump(), exchange=config.APP_EXCHANGE
-        )
+        logger.debug(f"Payment status {payment.status} published to queue")
+
         return {"message": "status processed"}, 200
 
 
