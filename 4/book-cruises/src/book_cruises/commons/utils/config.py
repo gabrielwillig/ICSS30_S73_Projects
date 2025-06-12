@@ -35,6 +35,7 @@ class Config(BaseSettings):
     # Payment Service Configuration
     PAYMENT_SVC_WEB_SERVER_PORT: int = 5002
     PAYMENT_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Payment Service web server
+    PAYMENT_SVC_URL: str = f"http://{PAYMENT_SVC_WEB_SERVER_HOST}:{PAYMENT_SVC_WEB_SERVER_PORT}"
 
     # External Payment Service Configuration
     EXTERNAL_PAYMENT_SVC_PORT: int = 5003  # Port for the external payment service

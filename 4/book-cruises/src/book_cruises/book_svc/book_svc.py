@@ -8,8 +8,16 @@ from flask import Flask, request, jsonify
 
 from book_cruises.commons.utils import config, logger, cryptographer
 from book_cruises.commons.messaging import Consumer, Producer
-from book_cruises.commons.domains import ItineraryDTO, Reservation, ReservationDTO, Payment
-from book_cruises.commons.domains.repositories import ItineraryRepository, ReservationRepository
+from book_cruises.commons.domains import (
+    ItineraryDTO,
+    Reservation,
+    ReservationDTO,
+    Payment,
+)
+from book_cruises.commons.domains.repositories import (
+    ItineraryRepository,
+    ReservationRepository,
+)
 from .di import configure_dependencies
 
 
@@ -20,12 +28,10 @@ class BookSvc:
 
         self.__consumer: Consumer = consumer
         self.__producer: Producer = producer
-        self.__itinerary_repository = ItineraryRepository()
         self.__reservation_repository = ReservationRepository()
 
         self.__reservation_statuses = {}
 
-        self.__first_time = True
         self.__thread_consumer = None
 
     def run(self):
@@ -41,21 +47,19 @@ class BookSvc:
         self.__consumer.register_callback(
             config.TICKET_GENERATED_QUEUE, self.__process_ticket
         )
-        logger.info(f"Instance id {id(self)}")
 
         self.__start_consumer_thread()
 
     def create_reservation(self, reservation_dto: ReservationDTO):
-        reservation: Reservation = self.__reservation_repository.create_reservation(reservation_dto)
+        reservation: Reservation = self.__reservation_repository.create_reservation(
+            reservation_dto
+        )
 
         # Store the reservation status
-        self.__add_new_reservation(reservation.id)
+        self.__add_new_reservation(reservation)
 
         # Publish the reservation data to the RESERVE_CREATED_QUEUE
         self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation.model_dump())
-        if self.__first_time:
-            self.__producer.publish(config.RESERVE_CREATED_QUEUE, reservation.model_dump())
-            self.__first_time = False
 
         logger.debug(
             f"Published reservation {reservation.model_dump()} to {config.RESERVE_CREATED_QUEUE}"
@@ -63,12 +67,14 @@ class BookSvc:
 
         # Solicita link de pagamento ao MS Pagamento
         payment_res = requests.post(
-            f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/payment/link",
+            config.PAYMENT_SVC_URL + "/payment/link",
             json=reservation.model_dump(),
             timeout=config.REQUEST_TIMEOUT,
         )
 
-        logger.debug(f"Payment service response: {payment_res.status_code} - {payment_res.text}")
+        logger.debug(
+            f"Payment service response: {payment_res.status_code} - {payment_res.text}"
+        )
 
     def get_payment_status(self, reservation_id):
         # Wait for a response from the queues
@@ -117,12 +123,11 @@ class BookSvc:
         }
         logger.info(f"Added new reservation: {reservation.id}")
 
-    def __update_reservation_payment_status(
-        self, payment: Payment
-    ) -> None:
-        logger.debug(f"__reservation_statuses: {self.__reservation_statuses}")
+    def __update_reservation_payment_status(self, payment: Payment) -> None:
         self.__reservation_statuses[payment.reservation_id]["payment"] = payment.status
-        logger.info(f"Update reservation status: {payment.reservation_id} -> {payment.status}")
+        logger.debug(
+            f"Update reservation status: {payment.reservation_id} -> {payment.status}"
+        )
 
     def __update_reservation_ticket_status(
         self, reservation_id: str, status: str
@@ -141,13 +146,9 @@ class BookSvc:
 
         match payment.status:
             case "approved":
-                self.__update_reservation_payment_status(
-                    payment
-                )
+                self.__update_reservation_payment_status(payment)
             case "refused":
-                self.__update_reservation_payment_status(
-                    payment
-                )
+                self.__update_reservation_payment_status(payment)
             case _:
                 logger.error(f"Unknown status: {payment.status}")
 
@@ -160,7 +161,9 @@ class BookSvc:
                 time.sleep(5)
 
     def __start_consumer_thread(self) -> None:
-        self.__thread_consumer = Thread(target=self.__target_consumer_thread)
+        self.__thread_consumer = Thread(
+            target=self.__target_consumer_thread, daemon=True
+        )
         self.__thread_consumer.start()
 
     def __config_broker(self) -> None:
@@ -194,17 +197,21 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
     @app.route("/book/get-itineraries", methods=["POST"])
     def get_itineraries():
         itinerary_data = request.json
-        response = requests.post(config.ITINERARY_SVC_URL + "/itinerary/get-itineraries", json=itinerary_data, timeout=config.REQUEST_TIMEOUT)
+        response = requests.post(
+            config.ITINERARY_SVC_URL + "/itinerary/get-itineraries",
+            json=itinerary_data,
+            timeout=config.REQUEST_TIMEOUT,
+        )
 
         return jsonify(response.json()), response.status_code
 
-    @app.route("/create_reservation", methods=["POST"])
+    @app.route("/book/create-reservation", methods=["POST"])
     def create_reservation():
         reservation_dto = ReservationDTO(
-            client_id=0,
-            number_of_guests=request.json["passengers"],
-            itinerary_id=request.json["trip_id"],
-            total_price=request.json["price"],
+            client_id=request.json["client_id"],
+            number_of_guests=request.json["num_of_guests"],
+            itinerary_id=request.json["itinerary_id"],
+            total_price=request.json["total_price"],
         )
         result = book_svc.create_reservation(reservation_dto)
         return jsonify(result), 200
