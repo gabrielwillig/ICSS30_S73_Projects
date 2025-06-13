@@ -15,7 +15,8 @@ def generate_dummy_data():
         ship = random.choice(ships)
         departure_date = datetime.now().date() + timedelta(days=random.randint(1, 365))
         departure_time = (
-            datetime.min + timedelta(hours=random.randint(0, 23), minutes=random.randint(0, 59))
+            datetime.min
+            + timedelta(hours=random.randint(0, 23), minutes=random.randint(0, 59))
         ).time()
         departure_harbor = random.choice(harbors)
         arrival_harbor = random.choice([h for h in harbors if h != departure_harbor])
@@ -53,8 +54,9 @@ def initialize_itineraries_table(database: Database):
         arrival_harbor VARCHAR(255) NOT NULL,
         arrival_date DATE NOT NULL,
         visiting_harbors TEXT[],
-        number_of_days INT NOT NULL,
         price DECIMAL(10, 2) NOT NULL,
+        number_of_days INT NOT NULL,
+        remaining_cabinets INT DEFAULT 100,
         created_at TIMESTAMP DEFAULT transaction_timestamp(),
         updated_at TIMESTAMP DEFAULT transaction_timestamp()
     );
@@ -81,6 +83,7 @@ def initialize_itineraries_table(database: Database):
     else:
         logger.info("Itineraries table already contains data. Skipping data insertion.")
 
+
 def initialize_reservations_table(database: Database):
     # Create the reservations table if it doesn't exist
     create_table_query = """
@@ -88,10 +91,14 @@ def initialize_reservations_table(database: Database):
         id SERIAL PRIMARY KEY,
         client_id INT NOT NULL,
         number_of_guests INT NOT NULL,
+        number_of_cabinets INT NOT NULL,
         itinerary_id INT NOT NULL,
-        created_at TIMESTAMP DEFAULT transaction_timestamp(),
         total_price DECIMAL(10, 2) NOT NULL,
-        status VARCHAR(50) DEFAULT 'pending',
+        reservation_status VARCHAR(50) DEFAULT 'pending',
+        ticket_status VARCHAR(50) DEFAULT 'pending',
+        payment_status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT transaction_timestamp(),
+        updated_at TIMESTAMP DEFAULT transaction_timestamp(),
         FOREIGN KEY (itinerary_id) REFERENCES itineraries(id)
     );
     """

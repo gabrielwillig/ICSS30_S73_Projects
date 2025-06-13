@@ -25,18 +25,7 @@ class ItineraryRepository:
         # Map database rows to Itinerary domain objects
         itineraries = []
         for row in results:
-            itinerary = Itinerary(
-                id=row["id"],
-                ship=row["ship"],
-                departure_date=row["departure_date"],
-                departure_harbor=row["departure_harbor"],
-                departure_time=row["departure_time"],
-                arrival_harbor=row["arrival_harbor"],
-                arrival_date=row["arrival_date"],
-                visiting_harbors=row["visiting_harbors"],
-                number_of_days=row["number_of_days"],
-                price=row["price"]
-            )
+            itinerary = Itinerary(**row)
             itineraries.append(itinerary)
 
         return itineraries
@@ -46,20 +35,24 @@ class ItineraryRepository:
         result = self.__database.execute_query(query)
 
         if not result:
-            return None
+            logger.error(f"Itinerary with ID {itinerary_id} not found.")
+            return
 
         row = result[0]
-        itinerary = Itinerary(
-            id=row["id"],
-            ship=row["ship"],
-            departure_date=row["departure_date"],
-            departure_harbor=row["departure_harbor"],
-            departure_time=row["departure_time"],
-            arrival_harbor=row["arrival_harbor"],
-            arrival_date=row["arrival_date"],
-            visiting_harbors=row["visiting_harbors"],
-            number_of_days=row["number_of_days"],
-            price=row["price"]
-        )
+        itinerary = Itinerary(**row)
+
+        logger.debug(f"Retrieved itinerary: {itinerary}")
 
         return itinerary
+
+    def update_remaining_cabinets(self, itinerary_id: int, requested_cabinets: int) -> None:
+        query = f"""
+            UPDATE itineraries
+            SET remaining_cabinets = remaining_cabinets - {requested_cabinets},
+                updated_at = transaction_timestamp()
+            WHERE id = {itinerary_id} AND remaining_cabinets >= {requested_cabinets}
+        """
+        self.__database.execute_query(query)
+
+        if self.__database.rowcount == 0:
+            logger.error(f"Failed to update remaining cabinets for itinerary ID {itinerary_id}.")

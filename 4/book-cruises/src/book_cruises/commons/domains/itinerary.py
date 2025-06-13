@@ -21,6 +21,9 @@ class Itinerary(BaseModel):
         default_factory=list, description="List of visiting harbors"
     )
     number_of_days: int = Field(description="Number of days for the itinerary")
+    remaining_cabinets: int = Field(
+        description="Remaining seats available for the itinerary"
+    )
     price: float = Field(description="Price of the itinerary")
 
     def __init__(self, **data):
@@ -36,36 +39,6 @@ class Itinerary(BaseModel):
             )  # Convert date to ISO format string
         if isinstance(self.departure_time, time):
             self.departure_time = self.departure_time.isoformat()
-
-    # @staticmethod
-    # def from_dto(dto: "ItineraryDTO") -> "Itinerary":
-    #     raise NotImplementedError("Mapping logic not implemented yet")
-    #     return Itinerary(
-    #         id=dto.id,
-    #         ship=dto.ship,
-    #         departure_date=dto.departure_date,
-    #         departure_harbor=dto.departure_harbor,
-    #         departure_time=dto.departure_time,
-    #         arrival_harbor=dto.arrival_harbor,
-    #         arrival_time=dto.arrival_time,
-    #         visiting_harbors=dto.visiting_harbors,
-    #         number_of_days=dto.number_of_days,
-    #         price=dto.price,
-    #     )
-
-    def to_dto(self) -> "ItineraryDTO":
-        return ItineraryDTO(
-            id=self.id,
-            ship=self.ship,
-            departure_date=self.departure_date,
-            departure_harbor=self.departure_harbor,
-            departure_time=self.departure_time,
-            arrival_harbor=self.arrival_harbor,
-            arrival_time=self.arrival_time,
-            visiting_harbors=self.visiting_harbors,
-            number_of_days=self.number_of_days,
-            price=self.price,
-        )
 
 
 class ItineraryDTO(BaseModel):
@@ -85,15 +58,6 @@ class ItineraryDTO(BaseModel):
         None, description="Number of days for the itinerary"
     )
     price: Optional[float] = Field(None, description="Price of the itinerary")
-
-    # @field_validator("departure_date", "arrival_date", "departure_time", mode="before")
-    # def validate_date_or_datetime(cls, value, field):
-    #     if isinstance(value, str):
-    #         try:
-    #             if field == "departure_time":
-    #                 return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").time()
-    #             else:
-    #                 return datetime.strptime(value, "%Y-%m-%d").date()
-    #         except ValueError:
-    #             raise ValueError(f"{field} must be in YYYY-MM-DD or YYYY-MM-DD HH:MM:SS format.")
-    #     return value
+    remaining_seats: Optional[int] = Field(
+        default=None, description="Remaining seats available for the itinerary"
+    )

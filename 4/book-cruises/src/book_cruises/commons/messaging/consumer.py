@@ -57,9 +57,13 @@ class RabbitMQConsumer:
             auto_ack=auto_ack,
         )
 
-    def queue_bind(self, queue_name: str, exchange: str, routing_key: str = None) -> None:
+    def queue_bind(
+        self, queue_name: str, exchange: str, routing_key: str = None
+    ) -> None:
         """Bind a queue to an exchange with a routing key."""
-        self.channel.queue_bind(queue=queue_name, exchange=exchange, routing_key=routing_key)
+        self.channel.queue_bind(
+            queue=queue_name, exchange=exchange, routing_key=routing_key
+        )
 
     def basic_reject(self, delivery_tag: int, requeue: bool = False):
         self.channel.basic_reject(delivery_tag=delivery_tag, requeue=requeue)

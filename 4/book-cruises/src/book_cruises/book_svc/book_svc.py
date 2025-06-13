@@ -1,4 +1,3 @@
-import json
 from threading import Thread
 import time
 import requests
@@ -6,10 +5,9 @@ import requests
 import inject
 from flask import Flask, request, jsonify
 
-from book_cruises.commons.utils import config, logger, cryptographer
+from book_cruises.commons.utils import config, logger
 from book_cruises.commons.messaging import Consumer, Producer
 from book_cruises.commons.domains import (
-    ItineraryDTO,
     Reservation,
     ReservationDTO,
     Payment,
@@ -28,9 +26,11 @@ class BookSvc:
 
         self.__consumer: Consumer = consumer
         self.__producer: Producer = producer
-        self.__reservation_repository = ReservationRepository()
 
-        self.__reservation_statuses = {}
+        self.__reservation_repository = ReservationRepository()
+        self.__itinerary_repository = ItineraryRepository()
+
+        self.__cached_reservations = {}
 
         self.__thread_consumer = None
 
@@ -77,20 +77,19 @@ class BookSvc:
         )
 
     def get_payment_status(self, reservation_id):
-        # Wait for a response from the queues
         try:
-            if not reservation_id in self.__reservation_statuses:
+            if not reservation_id in self.__cached_reservations:
                 return {"status": "error", "message": "Reservation ID not found"}
 
-            logger.debug(f"Payment status: {self.__reservation_statuses}")
-            payment_status = self.__reservation_statuses[reservation_id]["payment"]
-            match payment_status:
+            reservation = self.__cached_reservations[reservation_id]
+
+            match reservation.payment_status:
                 case "approved":
-                    return {"status": "approved", "message": "Reservation approved"}
+                    return {"status": "approved", "message": "Payment approved"}
                 case "refused":
-                    return {"status": "refused", "message": "Reservation refused"}
-                case "waiting":
-                    return {"status": "waiting", "message": "Waiting for payment"}
+                    return {"status": "refused", "message": "Payment refused"}
+                case "pending":
+                    return {"status": "pending", "message": "Waiting for payment"}
                 case _:
                     return {"status": "error", "message": "Unknown status"}
         except Exception as e:
@@ -98,33 +97,46 @@ class BookSvc:
             return {"status": "error", "message": str(e)}
 
     def get_ticket_status(self, reservation_id):
-        # Wait for a response from the queues
         try:
-            if not reservation_id in self.__reservation_statuses:
+            if not reservation_id in self.__cached_reservations:
                 return {"status": "error", "message": "Reservation ID not found"}
 
-            logger.debug(f"Ticket status: {self.__reservation_statuses}")
-            ticket_status = self.__reservation_statuses[reservation_id]["ticket"]
-            match ticket_status:
-                case "ticket_generated":
-                    return {"status": "ticket_generated", "message": "Ticket generated"}
-                case "waiting":
-                    return {"status": "waiting", "message": "Waiting for ticket"}
+            reservation = self.__cached_reservations[reservation_id]
+
+            match reservation.ticket_status:
+                case "generated":
+                    return {"status": "generated", "message": "Ticket generated"}
+                case "pending":
+                    return {"status": "pending", "message": "Waiting for ticket"}
                 case _:
                     return {"status": "error", "message": "Unknown status"}
+
         except Exception as e:
             logger.error(f"Failed to process message: {e}")
             return {"status": "error", "message": str(e)}
 
+    def cancel_reservation(self, reservation_id: str) -> None:
+        """
+        Cancels a reservation by its ID.
+        This method updates the reservation status to 'cancelled' and notifies the user.
+        """
+        if reservation_id not in self.__cached_reservations:
+            logger.error(f"Reservation ID {reservation_id} not found.")
+            return
+
+        self.__reservation_repository.cancel_reservation(reservation_id)
+        self.__cached_reservations[reservation_id].reservation_status = "cancelled"
+
+        logger.info(f"Reservation {reservation_id} has been cancelled.")
+
     def __add_new_reservation(self, reservation: Reservation) -> None:
-        self.__reservation_statuses[reservation.id] = {
-            "payment": "waiting",
-            "ticket": "waiting",
-        }
+        self.__cached_reservations[reservation.id] = reservation
         logger.info(f"Added new reservation: {reservation.id}")
 
     def __update_reservation_payment_status(self, payment: Payment) -> None:
-        self.__reservation_statuses[payment.reservation_id]["payment"] = payment.status
+        self.__cached_reservations[payment.reservation_id].payment_status = (
+            payment.status
+        )
         logger.debug(
             f"Update reservation status: {payment.reservation_id} -> {payment.status}"
         )
@@ -132,13 +144,13 @@ class BookSvc:
     def __update_reservation_ticket_status(
         self, reservation_id: str, status: str
     ) -> None:
-        self.__reservation_statuses[reservation_id]["ticket"] = status
+        self.__cached_reservations[reservation_id].ticket_status = status
         logger.info(f"Update reservation status: {reservation_id} -> {status}")
 
     def __process_ticket(self, payment_data: dict) -> None:
         self.__update_reservation_ticket_status(
             payment_data["message"]["payment_data"]["reservation_id"],
-            "ticket_generated",
+            "generated",
         )
 
     def __process_payment(self, payment_data: dict) -> None:
@@ -147,8 +159,15 @@ class BookSvc:
         match payment.status:
             case "approved":
                 self.__update_reservation_payment_status(payment)
+                num_cabinets_to_update = self.__cached_reservations[
+                    payment.reservation_id
+                ].number_of_cabinets
+                self.__itinerary_repository.update_remaining_cabinets(
+                    payment.reservation_id, num_cabinets_to_update
+                )
             case "refused":
                 self.__update_reservation_payment_status(payment)
+                self.cancel_reservation(payment.reservation_id)
             case _:
                 logger.error(f"Unknown status: {payment.status}")
 
@@ -157,7 +176,7 @@ class BookSvc:
             try:
                 self.__consumer.start_consuming()
             except Exception as e:
-                logger.error(f"Error in thread_consumer: {e.with_traceback()}")
+                logger.error(f"Error in thread_consumer: {e}")
                 time.sleep(5)
 
     def __start_consumer_thread(self) -> None:
@@ -210,33 +229,29 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
         reservation_dto = ReservationDTO(
             client_id=request.json["client_id"],
             number_of_guests=request.json["num_of_guests"],
+            number_of_cabinets=request.json["num_of_cabinets"],
             itinerary_id=request.json["itinerary_id"],
             total_price=request.json["total_price"],
         )
         result = book_svc.create_reservation(reservation_dto)
         return jsonify(result), 200
 
-    @app.route("/payment/status", methods=["GET"])
-    def get_payment_status():
+    @app.route("/book/reservation-status", methods=["GET"])
+    def get_reservation_status():
         reservation_id = request.args.get("reservation_id")
-        result = book_svc.get_payment_status(reservation_id)
-        if (
-            result.get("status") == "error"
-            and result.get("message") == "Reservation ID not found"
-        ):
-            return jsonify(result), 404
-        return jsonify(result), 200
+        if not reservation_id:
+            return (
+                jsonify({"status": "error", "message": "Reservation ID is required"}),
+                400,
+            )
 
-    @app.route("/ticket/status", methods=["GET"])
-    def get_ticket_status():
-        reservation_id = request.args.get("reservation_id")
-        result = book_svc.get_ticket_status(reservation_id)
-        if (
-            result.get("status") == "error"
-            and result.get("message") == "Reservation ID not found"
-        ):
-            return jsonify(result), 404
-        return jsonify(result), 200
+        payment_status = book_svc.get_payment_status(reservation_id)
+        ticket_status = book_svc.get_ticket_status(reservation_id)
+
+        return (
+            jsonify({"payment_status": payment_status, "ticket_status": ticket_status}),
+            200,
+        )
 
     @app.route("/health", methods=["GET"])
     def health_check():
