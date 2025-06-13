@@ -29,7 +29,7 @@ def process_payment(payment: Payment):
     # Simulate a delay to mimic real-world processing time
     time.sleep(PROCESSING_DELAY)
 
-    if random.choice([True, False]):
+    if random.choice([True]):
         payment.status = "approved"
         logger.info("Payment approved")
     else:
