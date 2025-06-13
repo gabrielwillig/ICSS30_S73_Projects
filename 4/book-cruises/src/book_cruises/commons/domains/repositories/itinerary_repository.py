@@ -52,7 +52,7 @@ class ItineraryRepository:
                 updated_at = transaction_timestamp()
             WHERE id = {itinerary_id} AND remaining_cabinets >= {requested_cabinets}
         """
-        self.__database.execute_query(query)
+        rows_affected = self.__database.execute_query(query)
 
-        if self.__database.rowcount == 0:
+        if rows_affected == 0:
             logger.error(f"Failed to update remaining cabinets for itinerary ID {itinerary_id}.")

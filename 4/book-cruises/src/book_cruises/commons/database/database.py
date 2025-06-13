@@ -39,7 +39,7 @@ class Database:
 
                 self.connection.commit()
                 logger.debug(f"Query executed: {cursor.rowcount} row(s) affected.")
-                return {"rowcount": cursor.rowcount}
+                return cursor.rowcount
         except Exception as e:
             logger.error(f"Failed to execute query: {e}")
             self.connection.rollback()
