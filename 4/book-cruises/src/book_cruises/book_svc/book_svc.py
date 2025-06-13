@@ -73,7 +73,7 @@ class BookSvc:
         )
 
         logger.debug(
-            f"Payment service response: {payment_res.status_code} - {payment_res.text}"
+            f"Payment service response: {payment_res.text}"
         )
 
     def get_payment_status(self, reservation_id):
@@ -176,7 +176,7 @@ class BookSvc:
             try:
                 self.__consumer.start_consuming()
             except Exception as e:
-                logger.error(f"Error in thread_consumer: {e}")
+                logger.error(f"Error in thread_consumer", exc_info=True)
                 time.sleep(5)
 
     def __start_consumer_thread(self) -> None:
@@ -252,6 +252,18 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
             jsonify({"payment_status": payment_status, "ticket_status": ticket_status}),
             200,
         )
+
+    @app.route("/book/cancel-reservation", methods=["DELETE"])
+    def cancel_reservation():
+        reservation_id = request.json.get("reservation_id")
+        if not reservation_id:
+            return (
+                jsonify({"status": "error", "message": "Reservation ID is required"}),
+                400,
+            )
+
+        book_svc.cancel_reservation(reservation_id)
+        return jsonify({"status": "success", "message": "Reservation cancelled"}), 200
 
     @app.route("/health", methods=["GET"])
     def health_check():

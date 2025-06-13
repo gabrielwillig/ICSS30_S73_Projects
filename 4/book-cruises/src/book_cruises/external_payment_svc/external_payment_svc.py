@@ -18,7 +18,7 @@ def receives_payment():
 
     Thread(target=process_payment, args=(payment,)).start()
 
-    return jsonify({"message": "Payment received"}), 200
+    return jsonify({"message": "External payment service is processing..."}), 200
 
 def process_payment(payment: Payment):
     """
