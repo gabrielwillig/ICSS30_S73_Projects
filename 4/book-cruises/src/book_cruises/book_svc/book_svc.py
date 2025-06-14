@@ -83,6 +83,8 @@ class BookSvc:
 
         logger.debug(f"Payment service response: {payment_res.text}")
 
+        return payment_res.json()
+
     def get_payment_status(self, reservation_id):
         if not reservation_id in self.__cached_reservations:
             return {"status": "error", "message": "Reservation ID not found"}
@@ -274,6 +276,7 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
         """
 
         itinerary_data = request.json
+        logger.info(f"Received itinerary request: {itinerary_data}")
         response = requests.post(
             f"http://{config.ITINERARY_SVC_WEB_SERVER_HOST}:{config.ITINERARY_SVC_WEB_SERVER_PORT}/itinerary/get-itineraries",
             json=itinerary_data,

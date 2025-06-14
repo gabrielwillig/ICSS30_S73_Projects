@@ -81,7 +81,8 @@ function displayCruises(cruises) {
     // Clear and populate the map with new cruise data
     fetchedCruisesMap.clear();
     cruises.forEach(cruise => {
-        fetchedCruisesMap.set(cruise.id, cruise);
+        // Ensure the ID is stored as a number in the map, matching its type from backend
+        fetchedCruisesMap.set(parseInt(cruise.id, 10), cruise);
     });
 
     if (cruises && cruises.length > 0) {
@@ -96,7 +97,7 @@ function displayCruises(cruises) {
                 <p class="text-gray-600 mb-1">Visits: <span class="font-semibold">${cruise.visiting_harbors.join(', ')}</span></p>
                 <p class="text-gray-600 mb-1">Duration: <span class="font-semibold">${cruise.number_of_days} days</span></p>
                 <p class="text-lg font-bold text-indigo-600 mt-3">Price: R$ ${cruise.price.toFixed(2)}</p>
-                <p class="text-sm text-gray-500 mt-2">Available Cabins: ${cruise.available_cabins} | Available Passengers: ${cruise.available_passengers}</p>
+                <p class="text-sm text-gray-500 mt-2">Available Cabins: ${cruise.remaining_cabinets} | Available Passengers: ${cruise.remaining_passengers}</p>
                 <button class="mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 book-now-btn" data-itinerary-id="${cruise.id}">
                     Book Now
                 </button>
@@ -219,41 +220,45 @@ function disconnectSSE() {
  * @param {string} itineraryId - The ID of the itinerary to book.
  */
 function openBookingModal(itineraryId) {
-    currentBookingItineraryId = itineraryId;
-    modalItineraryId.textContent = itineraryId;
+    // Convert itineraryId to number, as it's passed as a string from dataset
+    currentBookingItineraryId = parseInt(itineraryId, 10);
+    modalItineraryId.textContent = itineraryId; // Display the original string ID in modal for user
 
-    const cruise = fetchedCruisesMap.get(itineraryId);
+    // Get the cruise data using the numeric ID
+    const cruise = fetchedCruisesMap.get(currentBookingItineraryId);
     if (cruise) {
-        modalMaxPassengers.textContent = cruise.available_passengers;
-        modalMaxCabins.textContent = cruise.available_cabins;
+        // Use remaining_passengers and remaining_cabinets received from the backend
+        modalMaxPassengers.textContent = cruise.remaining_passengers;
+        modalMaxCabins.textContent = cruise.remaining_cabinets;
 
         // Set max attribute for input fields to prevent exceeding available
-        numPassengersInput.max = cruise.available_passengers;
-        numCabinsInput.max = cruise.available_cabins;
+        numPassengersInput.max = cruise.remaining_passengers;
+        numCabinsInput.max = cruise.remaining_cabinets;
         numPassengersInput.value = 1; // Reset to default
         numCabinsInput.value = 1;     // Reset to default
 
-        // Optional: Add client-side visual validation (e.g., if value > max)
+        // Add client-side visual validation (e.g., if value > max)
+        // Ensure input values don't exceed max or go below 1
         numPassengersInput.addEventListener('input', () => {
-            if (parseInt(numPassengersInput.value) > cruise.available_passengers) {
-                numPassengersInput.value = cruise.available_passengers;
-            }
-            if (parseInt(numPassengersInput.value) < 1) { // Ensure at least 1
+            const val = parseInt(numPassengersInput.value);
+            if (isNaN(val) || val < 1) {
                 numPassengersInput.value = 1;
+            } else if (val > cruise.remaining_passengers) {
+                numPassengersInput.value = cruise.remaining_passengers;
             }
         });
         numCabinsInput.addEventListener('input', () => {
-            if (parseInt(numCabinsInput.value) > cruise.available_cabins) {
-                numCabinsInput.value = cruise.available_cabins;
-            }
-            if (parseInt(numCabinsInput.value) < 1) { // Ensure at least 1
+            const val = parseInt(numCabinsInput.value);
+            if (isNaN(val) || val < 1) {
                 numCabinsInput.value = 1;
+            } else if (val > cruise.remaining_cabinets) {
+                numCabinsInput.value = cruise.remaining_cabinets;
             }
         });
 
     } else {
-        console.error(`Cruise data not found for itinerary ID: ${itineraryId}`);
-        showMessage('Error: Cruise details not found. Please try searching again.', 'error');
+        console.error(`Cruise data not found in map for itinerary ID: ${itineraryId} (type: ${typeof itineraryId}, parsed: ${currentBookingItineraryId})`);
+        showMessage(`Error: Cruise details not found for ID: ${itineraryId}. Please try searching again.`, 'error');
         closeBookingModal();
         return;
     }
@@ -351,33 +356,31 @@ subscribeCheckbox.addEventListener('change', () => {
 
 // Event listener for Confirm Booking Button
 confirmBookingButton.addEventListener('click', async () => {
-    const itinerary_id = currentBookingItineraryId;
+    const itinerary_id = currentBookingItineraryId; // Already a number from openBookingModal
     const num_passengers = parseInt(numPassengersInput.value, 10);
     const num_cabins = parseInt(numCabinsInput.value, 10);
 
-    const cruise = fetchedCruisesMap.get(itinerary_id);
+    const cruise = fetchedCruisesMap.get(itinerary_id); // Use the numeric ID here
 
-    // Calculate total price based on itinerary price and number of passengers
-    // ASSUMPTION: cruise.price is the price per person. Adjust if it's per cabin/per booking.
-    const total_price = cruise.price * num_passengers; // <-- NOVO CÁLCULO AQUI
-
-    // Client-side validation against available_passengers and available_cabins
-    if (num_passengers > cruise.available_passengers || num_cabins > cruise.available_cabins) {
+    // Client-side validation against remaining_passengers and remaining_cabinets
+    if (num_passengers > cruise.remaining_passengers || num_cabins > cruise.remaining_cabinets) {
         showMessage('Booking quantity exceeds available capacity. Please adjust.', 'error', bookingResultArea);
         return;
     }
 
-    if (!itinerary_id || isNaN(num_passengers) || num_passengers <= 0 || isNaN(num_cabins) || num_cabins <= 0 || isNaN(total_price) || total_price <= 0) {
-        showMessage('Please enter valid numbers for passengers and cabins, and ensure price is valid.', 'error', bookingResultArea);
+    if (!itinerary_id || isNaN(num_passengers) || num_passengers <= 0 || isNaN(num_cabins) || num_cabins <= 0) {
+        showMessage('Please enter valid numbers for passengers and cabins.', 'error', bookingResultArea);
         return;
     }
+
+    const total_price = cruise.price * num_passengers; // Calculate total price
 
     try {
         const response = await axios.post('/api/book-cruise', {
             itinerary_id,
             num_passengers,
             num_cabins,
-            total_price // <-- NOVO CAMPO ENVIADO PARA O BACKEND
+            total_price // Include total_price in the payload
         });
         showMessage(`Booking successful! Reservation Code: ${response.data.reservation_code}. Payment Link: <a href="${response.data.payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
 
