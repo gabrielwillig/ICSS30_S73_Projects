@@ -7,8 +7,8 @@ from .payment import Payment
 
 
 class Ticket(BaseModel):
-    GENERATED: ClassVar[str] = "generated"
-    PENDING: ClassVar[str] = "pending"
+    GENERATED: ClassVar[str] = "GENERATED"
+    PENDING: ClassVar[str] = "PENDING"
 
     id: int = Field(description="Unique identifier for the Ticket")
     status: str = Field(

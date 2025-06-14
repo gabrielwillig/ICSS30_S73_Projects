@@ -1,13 +1,16 @@
-from typing import Optional
+from typing import Optional, ClassVar
 import uuid
 
 from pydantic import BaseModel, Field
 
 
 class Payment(BaseModel):
+    APPROVED: ClassVar[str] = "APPROVED"
+    REFUSED: ClassVar[str] = "REFUSED"
+    PENDING: ClassVar[str] = "PENDING"
+
     id: int = Field(description="Unique identifier for the Payment")
     status: str = Field(
-        default="pending",
         description="Status of the payment (e.g., pending, approved, refused)",
     )
     currency: str = Field(default="USD", description="Currency of the payment")
@@ -35,7 +38,7 @@ class Payment(BaseModel):
         """
         return Payment(
             id=uuid.uuid4().int,
-            status="pending",
+            status=Payment.PENDING,
             total_price=total_price,
             reservation_id=reservation_id,
             itinerary_id=itinerary_id,

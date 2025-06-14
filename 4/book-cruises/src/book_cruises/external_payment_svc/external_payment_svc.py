@@ -32,10 +32,10 @@ def process_payment(payment: Payment):
     time.sleep(PROCESSING_DELAY)
 
     if random.choice([True]):
-        payment.status = "approved"
+        payment.status = Payment.APPROVED
         logger.info("Payment approved")
     else:
-        payment.status = "refused"
+        payment.status = Payment.REFUSED
         logger.warning("Payment refused")
 
     webhook_url = f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/payment/notify"

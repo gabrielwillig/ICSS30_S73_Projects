@@ -31,14 +31,14 @@ class PaymentSvc:
 
     def handle_payment_status(self, payment: Payment) -> tuple[dict, int]:
         match payment.status:
-            case "approved":
+            case Payment.APPROVED:
                 logger.info("payment approved")
                 self.__producer.publish(
                     config.APPROVED_PAYMENT_ROUTING_KEY,
                     payment.model_dump(),
                     config.APP_EXCHANGE,
                 )
-            case "refused":
+            case Payment.REFUSED:
                 logger.warning("payment refused")
                 self.__producer.publish(
                     config.REFUSED_PAYMENT_QUEUE, payment.model_dump()
@@ -46,7 +46,7 @@ class PaymentSvc:
             case _:
                 return {"error": "unknown status"}, 400
 
-        logger.debug(f"Payment status {payment.status} published to queue")
+        logger.debug(f"Payment status '{payment.status}' published to queue")
 
         return {"message": "status processed"}, 200
 

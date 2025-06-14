@@ -2,7 +2,7 @@ from typing import Dict
 from threading import Thread
 import time
 import requests
-from queue import Queue, Empty
+from queue import Queue
 import json
 
 import inject
@@ -84,43 +84,34 @@ class BookSvc:
         logger.debug(f"Payment service response: {payment_res.text}")
 
     def get_payment_status(self, reservation_id):
-        try:
-            if not reservation_id in self.__cached_reservations:
-                return {"status": "error", "message": "Reservation ID not found"}
+        if not reservation_id in self.__cached_reservations:
+            return {"status": "error", "message": "Reservation ID not found"}
 
-            reservation = self.__cached_reservations[reservation_id]
+        reservation = self.__cached_reservations[reservation_id]
 
-            match reservation.payment_status:
-                case "approved":
-                    return {"status": "approved", "message": "Payment approved"}
-                case "refused":
-                    return {"status": "refused", "message": "Payment refused"}
-                case "pending":
-                    return {"status": "pending", "message": "Waiting for payment"}
-                case _:
-                    return {"status": "error", "message": "Unknown status"}
-        except Exception as e:
-            logger.error(f"Failed to process message: {e}")
-            return {"status": "error", "message": str(e)}
+        match reservation.payment_status:
+            case Payment.APPROVED:
+                return {"status": Payment.APPROVED, "message": "Payment approved"}
+            case Payment.REFUSED:
+                return {"status": Payment.REFUSED, "message": "Payment refused"}
+            case Payment.PENDING:
+                return {"status": Payment.PENDING, "message": "Waiting for payment"}
+            case _:
+                return {"status": "error", "message": "Unknown status"}
 
     def get_ticket_status(self, reservation_id):
-        try:
-            if not reservation_id in self.__cached_reservations:
-                return {"status": "error", "message": "Reservation ID not found"}
+        if not reservation_id in self.__cached_reservations:
+            return {"status": "error", "message": "Reservation ID not found"}
 
-            reservation = self.__cached_reservations[reservation_id]
+        reservation = self.__cached_reservations[reservation_id]
 
-            match reservation.ticket_status:
-                case Ticket.GENERATED:
-                    return {"status": "generated", "message": "Ticket generated"}
-                case Ticket.PENDING:
-                    return {"status": "pending", "message": "Waiting for ticket"}
-                case _:
-                    return {"status": "error", "message": "Unknown status"}
-
-        except Exception as e:
-            logger.error(f"Failed to process message: {e}")
-            return {"status": "error", "message": str(e)}
+        match reservation.ticket_status:
+            case Ticket.GENERATED:
+                return {"status": Ticket.GENERATED, "message": "Ticket generated"}
+            case Ticket.PENDING:
+                return {"status": Ticket.PENDING, "message": "Waiting for ticket"}
+            case _:
+                return {"status": "error", "message": "Unknown status"}
 
     def cancel_reservation(self, reservation_id: str) -> None:
         """
@@ -131,10 +122,10 @@ class BookSvc:
             logger.error(f"Reservation ID {reservation_id} not found.")
             return
 
-        self.__reservation_repository.update_status(reservation_id, "cancelled")
-        self.__cached_reservations[reservation_id].reservation_status = "cancelled"
+        self.__reservation_repository.update_status(reservation_id, Reservation.CANCELLED)
+        self.__cached_reservations[reservation_id].reservation_status = Reservation.CANCELLED
 
-        logger.info(f"Reservation {reservation_id} has been cancelled.")
+        logger.info(f"Reservation with id '{reservation_id}' has been '{Reservation.CANCELLED}'.")
 
     def create_client_promotion_queue(self, client_id: str) -> None:
         """
@@ -144,9 +135,9 @@ class BookSvc:
         if client_id not in self.__clients_promotions_queue:
             queue = Queue()
             self.__clients_promotions_queue[client_id] = queue
-            logger.info(f"Created promotion queue for client {client_id}")
+            logger.info(f"Created promotion queue for client '{client_id}'")
         else:
-            logger.warning(f"Promotion queue for client {client_id} already exists")
+            logger.warning(f"Promotion queue for client '{client_id}' already exists")
 
         return queue
 
@@ -157,9 +148,9 @@ class BookSvc:
         """
         if client_id in self.__clients_promotions_queue:
             del self.__clients_promotions_queue[client_id]
-            logger.info(f"Removed promotion queue for client {client_id}")
+            logger.info(f"Removed promotion queue for client '{client_id}'")
         else:
-            logger.warning(f"No promotion queue found for client {client_id}")
+            logger.warning(f"No promotion queue found for client '{client_id}'")
 
     def __add_new_reservation(self, reservation: Reservation) -> None:
         self.__cached_reservations[reservation.id] = reservation
@@ -189,22 +180,22 @@ class BookSvc:
         payment: Payment = Payment(**payment_data)
 
         match payment.status:
-            case "approved":
+            case Payment.APPROVED:
                 self.__update_reservation_payment_status(payment)
                 num_cabinets_to_update = self.__cached_reservations[
                     payment.reservation_id
                 ].number_of_cabinets
                 self.__reservation_repository.update_status(
-                    payment.reservation_id, "approved"
+                    payment.reservation_id, Reservation.APPROVED
                 )
                 self.__itinerary_repository.update_remaining_cabinets(
                     payment.itinerary_id, num_cabinets_to_update
                 )
-            case "refused":
+            case Payment.REFUSED:
                 self.__update_reservation_payment_status(payment)
                 self.cancel_reservation(payment.reservation_id)
             case _:
-                logger.error(f"Unknown status: {payment.status}")
+                logger.error(f"Unknown status: '{payment.status}'")
 
     def __process_promotion(self, promotion_data: dict) -> None:
         """

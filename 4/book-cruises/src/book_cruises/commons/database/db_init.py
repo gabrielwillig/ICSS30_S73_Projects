@@ -94,9 +94,9 @@ def initialize_reservations_table(database: Database):
         number_of_cabinets INT NOT NULL,
         itinerary_id INT NOT NULL,
         total_price DECIMAL(10, 2) NOT NULL,
-        reservation_status VARCHAR(50) DEFAULT 'pending',
-        ticket_status VARCHAR(50) DEFAULT 'pending',
-        payment_status VARCHAR(50) DEFAULT 'pending',
+        reservation_status VARCHAR(50) DEFAULT 'PENDING',
+        ticket_status VARCHAR(50) DEFAULT 'PENDING',
+        payment_status VARCHAR(50) DEFAULT 'PENDING',
         created_at TIMESTAMP DEFAULT transaction_timestamp(),
         updated_at TIMESTAMP DEFAULT transaction_timestamp(),
         FOREIGN KEY (itinerary_id) REFERENCES itineraries(id)

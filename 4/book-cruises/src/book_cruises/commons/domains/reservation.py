@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, ClassVar
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -6,6 +6,10 @@ from .itinerary import Itinerary
 
 
 class Reservation(BaseModel):
+    APPROVED: ClassVar[str] = "APPROVED"
+    CANCELLED: ClassVar[str] = "CANCELLED"
+    PENDING: ClassVar[str] = "PENDING"
+
     id: int = Field(description="Unique identifier for the reservation")
     client_id: int = Field(description="Unique identifier for the client")
     number_of_guests: int = Field(

@@ -18,7 +18,7 @@ class TicketSvc:
 
         payment: Payment = Payment(**payment_data)
 
-        if payment.status != "approved":
+        if payment.status != Payment.APPROVED:
             logger.error(f"Error processing ticket with data: '{payment.model_dump()}'")
             return
 
