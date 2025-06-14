@@ -11,14 +11,16 @@ PROCESSING_DELAY = 6  # seconds
 
 app = Flask(__name__)
 
-@app.route('/external/receives-payment', methods=['POST'])
+
+@app.route("/external/receives-payment", methods=["POST"])
 def receives_payment():
     payment: Payment = Payment(**request.json)
     logger.info(f"Received payment: {payment.model_dump()}")
 
-    Thread(target=process_payment, args=(payment,)).start()
+    Thread(target=process_payment, args=(payment,), daemon=True).start()
 
     return jsonify({"message": "External payment service is processing..."}), 200
+
 
 def process_payment(payment: Payment):
     """
@@ -37,11 +39,17 @@ def process_payment(payment: Payment):
         logger.warning("Payment refused")
 
     webhook_url = f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/payment/notify"
-    requests.post(webhook_url, json=payment.model_dump(), timeout=config.REQUEST_TIMEOUT)
+    requests.post(
+        webhook_url, json=payment.model_dump(), timeout=config.REQUEST_TIMEOUT
+    )
+
 
 def main():
+    logger.info(
+        f"Starting External Payment Service on 'http://{config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_HOST}:{config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_PORT}'"
+    )
     app.run(
-        host=config.EXTERNAL_PAYMENT_SVC_HOST,
-        port=config.EXTERNAL_PAYMENT_SVC_PORT,
-        debug=config.DEBUG
+        host=config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_HOST,
+        port=config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_PORT,
+        debug=config.DEBUG,
     )

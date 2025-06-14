@@ -75,7 +75,7 @@ class BookSvc:
 
         # Solicita link de pagamento ao MS Pagamento
         payment_res = requests.post(
-            config.PAYMENT_SVC_URL + "/payment/link",
+            f"http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}/payment/link",
             json=reservation.model_dump(),
             timeout=config.REQUEST_TIMEOUT,
         )
@@ -130,7 +130,7 @@ class BookSvc:
             logger.error(f"Reservation ID {reservation_id} not found.")
             return
 
-        self.__reservation_repository.cancel_reservation(reservation_id)
+        self.__reservation_repository.update_status(reservation_id, "cancelled")
         self.__cached_reservations[reservation_id].reservation_status = "cancelled"
 
         logger.info(f"Reservation {reservation_id} has been cancelled.")
@@ -193,6 +193,9 @@ class BookSvc:
                 num_cabinets_to_update = self.__cached_reservations[
                     payment.reservation_id
                 ].number_of_cabinets
+                self.__reservation_repository.update_status(
+                    payment.reservation_id, "approved"
+                )
                 self.__itinerary_repository.update_remaining_cabinets(
                     payment.reservation_id, num_cabinets_to_update
                 )
@@ -280,7 +283,7 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
 
         itinerary_data = request.json
         response = requests.post(
-            config.ITINERARY_SVC_URL + "/itinerary/get-itineraries",
+            f"http://{config.ITINERARY_SVC_WEB_SERVER_HOST}:{config.ITINERARY_SVC_WEB_SERVER_PORT}/itinerary/get-itineraries",
             json=itinerary_data,
             timeout=config.REQUEST_TIMEOUT,
         )

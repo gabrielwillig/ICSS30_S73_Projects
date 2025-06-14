@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings
 
+
 class Config(BaseSettings):
+
     # RabbitMQ Configuration
     RABBITMQ_HOST: str = "localhost"
     RABBITMQ_USERNAME: str = "user"
@@ -35,18 +37,25 @@ class Config(BaseSettings):
 
     # Payment Service Configuration
     PAYMENT_SVC_WEB_SERVER_PORT: int = 5002
-    PAYMENT_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Payment Service web server
-    PAYMENT_SVC_URL: str = f"http://{PAYMENT_SVC_WEB_SERVER_HOST}:{PAYMENT_SVC_WEB_SERVER_PORT}"
+    PAYMENT_SVC_WEB_SERVER_HOST: str = (
+        "localhost"  # Host for the Payment Service web server
+    )
 
     # External Payment Service Configuration
-    EXTERNAL_PAYMENT_SVC_PORT: int = 5003  # Port for the external payment service
-    EXTERNAL_PAYMENT_SVC_HOST: str = "localhost"  # Host for the external payment service
+    EXTERNAL_PAYMENT_SVC_WEB_SERVER_PORT: int = (
+        5003  # Port for the external payment service
+    )
+    EXTERNAL_PAYMENT_SVC_WEB_SERVER_HOST: str = (
+        "localhost"  # Host for the external payment service
+    )
 
     # Itinerary Service Configuration
-    ITINERARY_SVC_WEB_SERVER_PORT: int = 5004  # Port for the Itinerary Service web server
-    ITINERARY_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Itinerary Service web server
-    ITINERARY_SVC_URL: str = f"http://{ITINERARY_SVC_WEB_SERVER_HOST}:{ITINERARY_SVC_WEB_SERVER_PORT}"
-
+    ITINERARY_SVC_WEB_SERVER_PORT: int = (
+        5004  # Port for the Itinerary Service web server
+    )
+    ITINERARY_SVC_WEB_SERVER_HOST: str = (
+        "localhost"  # Host for the Itinerary Service web server
+    )
 
     REQUEST_TIMEOUT: int = 5  # Timeout for HTTP requests in seconds
 
@@ -58,13 +67,14 @@ class Config(BaseSettings):
     DB_PORT: int = 5432
 
     # Logging Configuration
-    LOG_LEVEL: str = "DEBUG" if DEBUG else "INFO"  # Set to DEBUG if DEBUG is True, otherwise INFO
-
-    book_svc_queue: str = "book_svc_queue"
+    LOG_LEVEL: str = (
+        "DEBUG" if DEBUG else "INFO"
+    )  # Set to DEBUG if DEBUG is True, otherwise INFO
 
     class Config:
         env_file = ".env"  # Load environment variables from a .env file if present
         env_file_encoding = "utf-8"
+
 
 # Create a single instance of the configuration
 config = Config()

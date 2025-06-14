@@ -41,18 +41,33 @@ class ReservationRepository:
 
         reservation = Reservation(**row)
 
-        logger.debug(f"Reservation created with ID: {reservation.id}")
+        logger.debug(f"Reservation created with ID: '{reservation.id}'")
 
         return reservation
 
-    def cancel_reservation(self, reservation_id: int) -> None:
+    def update_status(self, reservation_id: int, new_status: str) -> Reservation:
         query = f"""
             UPDATE reservations
             SET
-                reservation_status = 'cancelled',
+                reservation_status = '{new_status}',
                 updated_at = transaction_timestamp()
             WHERE
                 id = {reservation_id}
+            RETURNING
+                id,
+                client_id,
+                number_of_guests,
+                number_of_cabinets,
+                itinerary_id,
+                total_price,
+                reservation_status,
+                ticket_status,
+                payment_status
         """
-        self.__database.execute_query(query)
-        logger.debug(f"Reservation with ID {reservation_id} has been cancelled.")
+        row = self.__database.execute_query(query)[0]
+
+        reservation = Reservation(**row)
+
+        logger.debug(f"Reservation with ID '{reservation.id}' has been updated to -> '{new_status}'.")
+
+        return reservation

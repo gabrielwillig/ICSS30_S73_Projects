@@ -22,20 +22,21 @@ class PaymentSvc:
         )
 
         response = requests.post(
-            f"http://{config.EXTERNAL_PAYMENT_SVC_HOST}:{config.EXTERNAL_PAYMENT_SVC_PORT}/external/receives-payment",
+            f"http://{config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_HOST}:{config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_PORT}/external/receives-payment",
             json=payment.model_dump(),
             timeout=config.REQUEST_TIMEOUT,
         )
 
         return response.json()
 
-
     def handle_payment_status(self, payment: Payment) -> tuple[dict, int]:
         match payment.status:
             case "approved":
                 logger.info("payment approved")
                 self.__producer.publish(
-                    config.APPROVED_PAYMENT_ROUTING_KEY, payment.model_dump(), config.APP_EXCHANGE
+                    config.APPROVED_PAYMENT_ROUTING_KEY,
+                    payment.model_dump(),
+                    config.APP_EXCHANGE,
                 )
             case "refused":
                 logger.warning("payment refused")
@@ -74,6 +75,11 @@ def main() -> None:
     payment_svc = PaymentSvc()
 
     app = create_flask_app(payment_svc)
+
+    logger.info(
+        f"Starting Payment Service on 'http://{config.PAYMENT_SVC_WEB_SERVER_HOST}:{config.PAYMENT_SVC_WEB_SERVER_PORT}'"
+    )
+
     app.run(
         host=config.PAYMENT_SVC_WEB_SERVER_HOST,
         port=config.PAYMENT_SVC_WEB_SERVER_PORT,

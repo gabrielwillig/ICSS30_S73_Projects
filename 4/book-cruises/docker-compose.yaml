@@ -20,8 +20,8 @@ services:
     networks:
       - default
 
-  db_init:
-    container_name: db_init
+  db-init:
+    container_name: db-init
     restart: no
     build:
       context: .
@@ -51,7 +51,7 @@ services:
     container_name: rabbitmq
     restart: on-failure
     depends_on:
-      db_init:
+      db-init:
         condition: service_started
     ports:
       - "5672:5672"
@@ -70,8 +70,8 @@ services:
       retries: 20 # RabbitMQ can take time to start
       start_period: 30s
 
-  book_svc:
-    container_name: book_svc
+  book-svc:
+    container_name: book-svc
     build:
       context: .
       dockerfile: Dockerfile
@@ -81,7 +81,7 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://book_svc:5001/health > /dev/null" ]
+      test: [ "CMD-SHELL", "curl -f http://book-svc:5001/health > /dev/null" ]
       interval: 30s
       timeout: 5s
       retries: 20
@@ -98,15 +98,15 @@ services:
     networks:
       - default
 
-  payment_svc:
-    container_name: payment_svc
+  payment-svc:
+    container_name: payment-svc
     build:
       context: .
       dockerfile: Dockerfile
     image: book-cruises
     restart: no
     depends_on:
-      book_svc:
+      book-svc:
         condition: service_healthy
     env_file:
       - .env
@@ -118,62 +118,80 @@ services:
     networks:
       - default
 
-  ticket_svc:
-    container_name: ticket_svc
+  # ticket-svc:
+  #   container_name: ticket-svc
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   image: book-cruises
+  #   restart: no
+  #   depends_on:
+  #     book-svc:
+  #       condition: service_healthy
+  #   env_file:
+  #     - .env
+  #   command: >
+  #     sh -c " uv run ticket-svc; "
+  #   volumes:
+  #     - .:/app
+  #   working_dir: /app
+  #   networks:
+  #     - default
+
+  # marketing-svc:
+  #   container_name: marketing-svc
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   image: book-cruises
+  #   restart: no
+  #   depends_on:
+  #     book-svc:
+  #       condition: service_healthy
+  #   env_file:
+  #     - .env
+  #   command: >
+  #     sh -c " uv run marketing-svc; "
+  #   volumes:
+  #     - .:/app
+  #   working_dir: /app
+  #   networks:
+  #     - default
+
+  itinerary-svc:
+    container_name: itinerary-svc
     build:
       context: .
       dockerfile: Dockerfile
     image: book-cruises
     restart: no
     depends_on:
-      book_svc:
+      book-svc:
         condition: service_healthy
     env_file:
       - .env
     command: >
-      sh -c " uv run ticket-svc; "
+      sh -c " uv run itinerary-svc; "
     volumes:
       - .:/app
     working_dir: /app
     networks:
       - default
 
-  marketing_svc:
-    container_name: marketing_svc
+  external-payment-svc:
+    container_name: external-payment-svc
     build:
       context: .
       dockerfile: Dockerfile
     image: book-cruises
     restart: no
     depends_on:
-      book_svc:
+      book-svc:
         condition: service_healthy
     env_file:
       - .env
     command: >
-      sh -c " uv run marketing-svc; "
-    volumes:
-      - .:/app
-    working_dir: /app
-    networks:
-      - default
-
-  app:
-    container_name: app
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: book-cruises
-    restart: no
-    depends_on:
-      book_svc:
-        condition: service_healthy
-    ports:
-      - "5000:5000"
-    env_file:
-      - .env
-    command: >
-      sh -c " uv run app; "
+      sh -c " uv run external-payment-svc; "
     volumes:
       - .:/app
     working_dir: /app
