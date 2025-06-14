@@ -91,10 +91,10 @@ function displayCruises(cruises) {
             cruiseCard.innerHTML = `
                 <h3 class="text-xl font-bold text-gray-800 mb-2">${cruise.ship}</h3>
                 <p class="text-gray-600 mb-1">Itinerary ID: <span class="font-semibold">${cruise.id}</span></p>
-                <p class="text-gray-600 mb-1">Departure: <span class="font-semibold">${cruise.departure_harbor}</span></p>
+                <p class="text-gray-600 mb-1">Departure: <span class="font-semibold">${cruise.departure_harbor} at ${cruise.departure_time || 'N/A'}</span></p>
+                <p class="text-gray-600 mb-1">Arrival: <span class="font-semibold">${cruise.arrival_harbor} on ${cruise.arrival_date || 'N/A'}</span></p>
                 <p class="text-gray-600 mb-1">Visits: <span class="font-semibold">${cruise.visiting_harbors.join(', ')}</span></p>
                 <p class="text-gray-600 mb-1">Duration: <span class="font-semibold">${cruise.number_of_days} days</span></p>
-                <p class="text-gray-600 mb-1">Departure Date: <span class="font-semibold">${cruise.departure_date}</span></p>
                 <p class="text-lg font-bold text-indigo-600 mt-3">Price: R$ ${cruise.price.toFixed(2)}</p>
                 <p class="text-sm text-gray-500 mt-2">Available Cabins: ${cruise.available_cabins} | Available Passengers: ${cruise.available_passengers}</p>
                 <button class="mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 book-now-btn" data-itinerary-id="${cruise.id}">
@@ -346,8 +346,7 @@ updateSubscriptionButton.addEventListener('click', async () => {
 
 // Event listener for checkbox state change (for convenience, also triggers update)
 subscribeCheckbox.addEventListener('change', () => {
-    // For now, it will simply log the state change.
-    console.log(`Subscribe checkbox changed to: ${subscribeCheckbox.checked}`);
+    // For now, it.
 });
 
 // Event listener for Confirm Booking Button
@@ -358,14 +357,18 @@ confirmBookingButton.addEventListener('click', async () => {
 
     const cruise = fetchedCruisesMap.get(itinerary_id);
 
+    // Calculate total price based on itinerary price and number of passengers
+    // ASSUMPTION: cruise.price is the price per person. Adjust if it's per cabin/per booking.
+    const total_price = cruise.price * num_passengers; // <-- NOVO CÁLCULO AQUI
+
     // Client-side validation against available_passengers and available_cabins
     if (num_passengers > cruise.available_passengers || num_cabins > cruise.available_cabins) {
         showMessage('Booking quantity exceeds available capacity. Please adjust.', 'error', bookingResultArea);
         return;
     }
 
-    if (!itinerary_id || isNaN(num_passengers) || num_passengers <= 0 || isNaN(num_cabins) || num_cabins <= 0) {
-        showMessage('Please enter valid numbers for passengers and cabins.', 'error', bookingResultArea);
+    if (!itinerary_id || isNaN(num_passengers) || num_passengers <= 0 || isNaN(num_cabins) || num_cabins <= 0 || isNaN(total_price) || total_price <= 0) {
+        showMessage('Please enter valid numbers for passengers and cabins, and ensure price is valid.', 'error', bookingResultArea);
         return;
     }
 
@@ -373,7 +376,8 @@ confirmBookingButton.addEventListener('click', async () => {
         const response = await axios.post('/api/book-cruise', {
             itinerary_id,
             num_passengers,
-            num_cabins
+            num_cabins,
+            total_price // <-- NOVO CAMPO ENVIADO PARA O BACKEND
         });
         showMessage(`Booking successful! Reservation Code: ${response.data.reservation_code}. Payment Link: <a href="${response.data.payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
 

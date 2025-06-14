@@ -59,7 +59,7 @@ const router = express.Router();
  * description: List of visiting harbors.
  * number_of_days:
  * type: integer
- * description: Duration of the cruise in days.
+ * description: Duration in days.
  * price:
  * type: number
  * format: float
