@@ -1,14 +1,12 @@
 /**
  * Controlador para lidar com as operações relacionadas a cruzeiros.
  */
-
-// Simula um armazenamento de reservas. Em um sistema real, isso seria um banco de dados.
-// Usaremos um Map para facilitar a busca por reservation_code.
-const mockReservations = new Map();
+const axios = require('axios');
+const PYTHON_BOOK_SVC_URL = `http://${process.env.PYTHON_BOOK_SVC_WEB_SERVER_HOST || 'localhost'}:${process.env.PYTHON_BOOK_SVC_WEB_SERVER_PORT || 5001}`;
 
 /**
  * Função para buscar cruzeiros com base nos parâmetros fornecidos.
- * Esta função recebe os parâmetros via query string (GET request).
+ * Esta função agora faz uma requisição POST para o backend Python.
  *
  * @param {object} req - O objeto de requisição do Express.
  * @param {object} res - O objeto de resposta do Express.
@@ -16,7 +14,7 @@ const mockReservations = new Map();
  */
 exports.searchCruises = async (req, res) => {
     try {
-        // Extrai os parâmetros da query string da requisição
+        // Extrai os parâmetros da query string da requisição do frontend (Node.js)
         const { departure_harbor, arrival_harbor, departure_date } = req.query;
 
         // Validação de campos em inglês para manter a consistência da interface
@@ -25,140 +23,140 @@ exports.searchCruises = async (req, res) => {
             return res.status(400).json({ error: 'Incomplete search parameters. Please provide departure_harbor, arrival_harbor, and departure_date.' });
         }
 
-        console.log(`Received request to search for cruises:`);
+        console.log(`Received request to search for cruises from frontend:`);
         console.log(`  Departure Harbor: ${departure_harbor}`);
         console.log(`  Arrival Harbor: ${arrival_harbor}`);
         console.log(`  Departure Date: ${departure_date}`);
 
-        // Mock data with the expected structure from the backend
-        // Added available_cabins and available_passengers
-        const mockCruises = [
-            {
-                id: 'ITN001', // Itinerary ID
-                ship: 'Wonder of the Seas', // Ship name
-                departure_harbor: 'Miami', // Departure harbor
-                visiting_harbors: ['Nassau', 'Freeport', 'CocoCay'], // List of visiting harbors
-                number_of_days: 7, // Duration in days
-                price: 1500.00, // Price
-                departure_date: '2025-12-25',
-                available_cabins: 10, // Available cabins
-                available_passengers: 20 // Available passenger spots
-            },
-            {
-                id: 'ITN002',
-                ship: 'Mediterranean Jewel',
-                departure_harbor: 'Barcelona',
-                visiting_harbors: ['Marseille', 'Civitavecchia', 'Naples'],
-                number_of_days: 10,
-                price: 2200.00,
-                departure_date: '2025-10-10',
-                available_cabins: 5,
-                available_passengers: 10
-            },
-            {
-                id: 'ITN003',
-                ship: 'Northern Star',
-                departure_harbor: 'Copenhagen',
-                visiting_harbors: ['Oslo', 'Stockholm', 'Helsinki'],
-                number_of_days: 12,
-                price: 2800.00,
-                departure_date: '2025-11-01',
-                available_cabins: 0, // This itinerary will be filtered out due to 0 cabins
-                available_passengers: 0 // This itinerary will be filtered out due to 0 passengers
-            },
-            {
-                id: 'ITN004',
-                ship: 'Test Vessel',
-                departure_harbor: departure_harbor,
-                visiting_harbors: [arrival_harbor, 'Another Port'],
-                number_of_days: 5,
-                price: 999.00,
-                departure_date: departure_date,
-                available_cabins: 2,
-                available_passengers: 4
-            },
-            {
-                id: 'ITN005',
-                ship: 'Pacific Explorer',
-                departure_harbor: 'Miami',
-                visiting_harbors: ['Cancun', 'Key West'],
-                number_of_days: 4,
-                price: 800.00,
-                departure_date: '2025-12-25', // Same date as ITN001 for demonstration
-                available_cabins: 0, // This will also be filtered out
-                available_passengers: 5
-            }
-        ];
+        // Objeto de dados para enviar ao backend Python
+        const itineraryData = {
+            departure_harbor,
+            arrival_harbor,
+            departure_date
+        };
 
-        // Filter out itineraries where available_cabins or available_passengers are 0
-        const filteredCruises = mockCruises.filter(cruise =>
-            cruise.available_cabins > 0 && cruise.available_passengers > 0
-        );
+        console.log(`Forwarding request to Python backend at ${PYTHON_BOOK_SVC_URL}/book/get-itineraries with data:`, itineraryData);
 
-        res.status(200).json(filteredCruises);
+        // Faz a requisição POST para o seu backend Python (MS Reserva)
+        const response = await axios.post(`${PYTHON_BOOK_SVC_URL}/book/get-itineraries`, itineraryData, {
+            timeout: 5000 // Timeout de 5 segundos para a requisição ao backend Python
+        });
+
+        // Os dados vêm do Python com a estrutura definida (id, ship, departure_date, etc.).
+        // Adicionamos 'available_cabins' e 'available_passengers' para o frontend.
+        const itinerariesFromPython = response.data;
+        const augmentedItineraries = itinerariesFromPython.map(itinerary => ({
+            ...itinerary,
+            // Adiciona disponibilidade mockada, já que não vem do backend Python Itinerary Service
+            // Garante que haja ao menos 1 para evitar divisão por zero ou limites de 0 no front.
+            available_cabins: Math.max(1, Math.floor(Math.random() * 10) + 1), // Exemplo: 1 a 10 cabines
+            available_passengers: Math.max(1, Math.floor(Math.random() * 20) + 1) // Exemplo: 1 a 20 passageiros
+        }));
+
+        res.status(response.status).json(augmentedItineraries);
 
     } catch (error) {
-        // Log the error for debugging
-        console.error(`Error in searchCruises: ${error.message}`);
-        // Send an error response to the client
-        res.status(500).json({ error: 'Internal server error while searching for cruises.' });
+        console.error(`Error in searchCruises when calling Python backend: ${error.message}`);
+        // Loga a resposta de erro do backend Python, se disponível
+        if (error.response) {
+            console.error('Python Backend Response Error Data:', error.response.data);
+            console.error('Python Backend Response Status:', error.response.status);
+            res.status(error.response.status).json({
+                error: error.response.data.error || 'Error from Python backend while searching for cruises.'
+            });
+        } else if (error.request) {
+            // A requisição foi feita, mas nenhuma resposta foi recebida
+            console.error('No response received from Python backend:', error.request);
+            res.status(504).json({ error: 'Gateway Timeout: No response from Python backend for cruise search.' });
+        } else {
+            // Algo aconteceu ao configurar a requisição que disparou um erro
+            console.error('Error setting up request to Python backend:', error.message);
+            res.status(500).json({ error: 'Internal server error while setting up cruise search.' });
+        }
     }
 };
 
 /**
  * Handles the booking of a cruise.
+ * Now communicates with the Python Book Service at /create_reservation.
+ *
  * @param {object} req - Express request object.
  * @param {object} res - Express response object.
  */
 exports.bookCruise = async (req, res) => {
     try {
-        const { itinerary_id, num_passengers, num_cabins } = req.body;
+        // Recebe os dados do frontend (itinerary_id, num_passengers, num_cabins, e agora total_price)
+        const { itinerary_id, num_passengers, num_cabins, total_price } = req.body;
 
-        if (!itinerary_id || !num_passengers || !num_cabins) {
-            console.error('Error 400: Missing booking parameters.');
-            return res.status(400).json({ error: 'Missing booking parameters. Please provide itinerary_id, num_passengers, and num_cabins.' });
+        if (!itinerary_id || !num_passengers || !num_cabins || isNaN(total_price) || total_price <= 0) {
+            console.error('Error 400: Missing or invalid booking parameters.');
+            return res.status(400).json({ error: 'Missing or invalid booking parameters. Please provide itinerary_id, num_passengers, num_cabins, and a valid total_price.' });
         }
 
-        // Basic validation for numbers
         if (num_passengers <= 0 || num_cabins <= 0) {
             console.error('Error 400: Number of passengers and cabins must be greater than 0.');
             return res.status(400).json({ error: 'Number of passengers and cabins must be greater than 0.' });
         }
 
-        // Simulate interaction with "Itinerary Service" to check actual availability.
-        // For now, we'll just assume it's available for the sake of the mock,
-        // as the `searchCruises` already filtered out unavailable ones.
-        // In a real scenario, you'd fetch the itinerary by ID and check its current availability.
-
-        // Simulate creating a reservation and generating a payment link
-        const reservationCode = `RES-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-        const paymentLink = `https://mock-payment.com/pay?code=${reservationCode}&amount=10000.00`; // Mock payment link
-
-        const reservationDetails = {
-            itinerary_id,
-            num_passengers,
-            num_cabins,
-            reservationCode,
-            paymentLink,
-            status: 'pending_payment',
-            timestamp: new Date().toISOString()
+        // Payload que será enviado para o backend Python (book_svc /create_reservation)
+        // Mapeando os nomes dos campos conforme o ReservationDTO do Python
+        const payloadToPython = {
+            client_id: 0, // Mocked client_id as discussed for academic project
+            passengers: num_passengers,
+            trip_id: itinerary_id,
+            price: total_price // O backend Python espera 'price' aqui para o total_price do DTO
         };
 
-        mockReservations.set(reservationCode, reservationDetails);
-        console.log(`Reservation created: ${JSON.stringify(reservationDetails)}`);
+        console.log(`Forwarding booking request to Python Book Service at ${PYTHON_BOOK_SVC_URL}/create_reservation with data:`, payloadToPython);
 
-        // In a real scenario, you would send an event to a RabbitMQ queue (e.g., 'reservation-created')
-        // for the Itinerary Service to consume and update its availability.
+        // Faz a requisição POST para o backend Python (MS Reserva)
+        const response = await axios.post(`${PYTHON_BOOK_SVC_URL}/create_reservation`, payloadToPython, {
+            timeout: 7000 // Timeout para a requisição ao backend Python
+        });
 
+        // O backend Python (MS Reserva) retorna um JSON que contém o ID da reserva
+        // e o payment_link gerado pelo MS Pagamento.
+        const pythonBookingResult = response.data; // Assumimos que o retorno é um objeto JSON.
+
+        // Verifica se a resposta do Python contém os campos esperados
+        if (!pythonBookingResult.id || !pythonBookingResult.payment_link) {
+            console.error('Python Book Service returned unexpected data:', pythonBookingResult);
+            return res.status(500).json({ error: 'Failed to create reservation: Unexpected response from booking service.' });
+        }
+
+        // Armazena a reserva localmente no Node.js (se necessário para cancelamento, etc.)
+        // Usamos o 'id' retornado pelo Python como o reservation_code
+        mockReservations.set(pythonBookingResult.id, {
+            ...pythonBookingResult,
+            status: 'pending_payment', // Status inicial, antes de interagir com o pagamento
+            timestamp: new Date().toISOString()
+        });
+
+        // Envia a resposta de volta para o frontend
         res.status(200).json({
             message: 'Reservation successfully created. Proceed to payment.',
-            reservation_code: reservationCode,
-            payment_link: paymentLink
+            reservation_code: pythonBookingResult.id, // ID da reserva do Python
+            payment_link: pythonBookingResult.payment_link
         });
 
     } catch (error) {
-        console.error(`Error in bookCruise: ${error.message}`);
-        res.status(500).json({ error: 'Internal server error while booking the cruise.' });
+        console.error(`Error in bookCruise when calling Python backend: ${error.message}`);
+        // Loga a resposta de erro do backend Python, se disponível
+        if (error.response) {
+            console.error('Python Backend Response Error Data:', error.response.data);
+            console.error('Python Backend Response Status:', error.response.status);
+            res.status(error.response.status).json({
+                error: error.response.data.error || 'Error from Python backend while booking cruise.'
+            });
+        } else if (error.request) {
+            // A requisição foi feita, mas nenhuma resposta foi recebida
+            console.error('No response received from Python backend:', error.request);
+            res.status(504).json({ error: 'Gateway Timeout: No response from Python backend for booking.' });
+        } else {
+            // Algo aconteceu ao configurar a requisição que disparou um erro
+            console.error('Error setting up request to Python backend:', error.message);
+            res.status(500).json({ error: 'Internal server error while setting up cruise booking.' });
+        }
     }
 };
 

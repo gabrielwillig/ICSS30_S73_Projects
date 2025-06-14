@@ -38,7 +38,7 @@ const router = express.Router();
  * 400:
  * description: Missing or invalid email.
  * content:
- * application/json:
+ * application/json: 
  * schema:
  * type: object
  * properties:
@@ -46,7 +46,7 @@ const router = express.Router();
  * type: string
  */
 // Rota para registrar interesse em promoções (inscrição)
-router.post('/subscribe', promotionController.subscribePromotionInterest);
+router.get('/subscribe', promotionController.subscribePromotionInterest);
 
 /**
  * @swagger
@@ -88,7 +88,7 @@ router.post('/subscribe', promotionController.subscribePromotionInterest);
  * type: string
  */
 // Rota para cancelar interesse em promoções (cancelamento de inscrição)
-router.post('/unsubscribe', promotionController.unsubscribePromotionInterest);
+router.get('/unsubscribe', promotionController.unsubscribePromotionInterest);
 
 /**
  * @swagger
