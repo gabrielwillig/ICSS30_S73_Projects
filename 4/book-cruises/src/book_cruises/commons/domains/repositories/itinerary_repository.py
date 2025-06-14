@@ -4,6 +4,7 @@ from book_cruises.commons.domains import Itinerary, ItineraryDTO
 from book_cruises.commons.database import Database
 from book_cruises.commons.utils import logger
 
+
 class ItineraryRepository:
     @inject.autoparams()
     def __init__(self, database: Database):
@@ -45,7 +46,9 @@ class ItineraryRepository:
 
         return itinerary
 
-    def update_remaining_cabinets(self, itinerary_id: int, requested_cabinets: int) -> None:
+    def update_remaining_cabinets(
+        self, itinerary_id: int, requested_cabinets: int
+    ) -> None:
         query = f"""
             UPDATE itineraries
             SET remaining_cabinets = remaining_cabinets - {requested_cabinets},
@@ -55,6 +58,10 @@ class ItineraryRepository:
         rows_affected = self.__database.execute_query(query)
 
         if rows_affected == 0:
-            logger.error(f"Failed to update remaining cabinets for itinerary ID '{itinerary_id}'.")
+            logger.error(
+                f"Failed to update remaining cabinets for itinerary ID '{itinerary_id}'."
+            )
         else:
-            logger.debug(f"Successfully updated remaining cabinets for itinerary ID '{itinerary_id}'.")
+            logger.debug(
+                f"Successfully updated remaining cabinets for itinerary ID '{itinerary_id}'."
+            )

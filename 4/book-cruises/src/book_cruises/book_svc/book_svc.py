@@ -14,6 +14,7 @@ from book_cruises.commons.domains import (
     Reservation,
     ReservationDTO,
     Payment,
+    Ticket,
 )
 from book_cruises.commons.domains.repositories import (
     ItineraryRepository,
@@ -110,9 +111,9 @@ class BookSvc:
             reservation = self.__cached_reservations[reservation_id]
 
             match reservation.ticket_status:
-                case "generated":
+                case Ticket.GENERATED:
                     return {"status": "generated", "message": "Ticket generated"}
-                case "pending":
+                case Ticket.PENDING:
                     return {"status": "pending", "message": "Waiting for ticket"}
                 case _:
                     return {"status": "error", "message": "Unknown status"}
@@ -169,20 +170,20 @@ class BookSvc:
             payment.status
         )
         logger.debug(
-            f"Update reservation status: {payment.reservation_id} -> {payment.status}"
+            f"Update payment status with reservation_id '{payment.reservation_id}' -> '{payment.status}'"
         )
 
     def __update_reservation_ticket_status(
-        self, reservation_id: str, status: str
+        self, reservation_id: str, ticket: Ticket
     ) -> None:
-        self.__cached_reservations[reservation_id].ticket_status = status
-        logger.info(f"Update reservation status: {reservation_id} -> {status}")
-
-    def __process_ticket(self, payment_data: dict) -> None:
-        self.__update_reservation_ticket_status(
-            payment_data["message"]["payment_data"]["reservation_id"],
-            "generated",
+        self.__cached_reservations[reservation_id].ticket_status = ticket.status
+        logger.info(
+            f"Update ticket status with reservation_id '{reservation_id}' -> '{ticket.status}'"
         )
+
+    def __process_ticket(self, ticket_data: dict) -> None:
+        ticket: Ticket = Ticket(**ticket_data)
+        self.__update_reservation_ticket_status(ticket.payment.reservation_id, ticket)
 
     def __process_payment(self, payment_data: dict) -> None:
         payment: Payment = Payment(**payment_data)

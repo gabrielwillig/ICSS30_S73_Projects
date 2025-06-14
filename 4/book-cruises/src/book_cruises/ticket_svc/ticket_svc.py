@@ -14,27 +14,33 @@ class TicketSvc:
         self.__consumer: Consumer = consumer
         self.__producer: Producer = producer
 
-    def __process_ticket(self, payment: Payment) -> None:
+    def __process_ticket(self, payment_data: dict) -> None:
+
+        payment: Payment = Payment(**payment_data)
 
         if payment.status != "approved":
             logger.error(f"Error processing ticket with data: '{payment.model_dump()}'")
             return
 
-        logger.info(f"Processing approved ticket with payment data: '{payment.model_dump()}'")
+        logger.info(
+            f"Processing approved ticket with payment data: '{payment.model_dump()}'"
+        )
 
         ticket: Ticket = Ticket.create_ticket(payment)
+        ticket.status = Ticket.GENERATED
 
         self.__producer.publish(
             config.TICKET_GENERATED_QUEUE,
             ticket.model_dump(),
         )
-        logger.info(f"Ticket generated with data: '{ticket}'")
-
+        logger.info(f"Ticket generated with data: '{ticket.model_dump()}'")
 
     def run(self):
         logger.info("Ticket Service Initialized")
 
-        self.__consumer.register_callback(config.APPROVED_PAYMENT_TICKET_QUEUE, self.__process_ticket)
+        self.__consumer.register_callback(
+            config.APPROVED_PAYMENT_TICKET_QUEUE, self.__process_ticket
+        )
         while True:
             try:
                 self.__consumer.start_consuming()

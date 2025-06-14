@@ -2,8 +2,16 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from book_cruises.commons.utils import logger
 
+
 class Database:
-    def __init__(self, host="localhost", database="book-cruises", user="user", password="password", port=5432):
+    def __init__(
+        self,
+        host="localhost",
+        database="book-cruises",
+        user="user",
+        password="password",
+        port=5432,
+    ):
         self.host = host
         self.database = database
         self.user = user
@@ -19,7 +27,7 @@ class Database:
                 database=self.database,
                 user=self.user,
                 password=self.password,
-                port=self.port
+                port=self.port,
             )
             logger.info(f"PostgreSQL initialized with database: {self.database}")
         except Exception as e:
