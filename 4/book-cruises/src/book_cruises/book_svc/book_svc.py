@@ -1,9 +1,12 @@
+from typing import Dict
 from threading import Thread
 import time
 import requests
+from queue import Queue, Empty
+import json
 
 import inject
-from flask import Flask, request, jsonify
+from flask import Flask, Response, request, jsonify, stream_with_context
 
 from book_cruises.commons.utils import config, logger
 from book_cruises.commons.messaging import Consumer, Producer
@@ -27,12 +30,14 @@ class BookSvc:
         self.__consumer: Consumer = consumer
         self.__producer: Producer = producer
 
-        self.__reservation_repository = ReservationRepository()
-        self.__itinerary_repository = ItineraryRepository()
+        self.__reservation_repository: ReservationRepository = ReservationRepository()
+        self.__itinerary_repository: ItineraryRepository = ItineraryRepository()
 
-        self.__cached_reservations = {}
+        self.__cached_reservations: Dict[str, Reservation] = {}
 
-        self.__thread_consumer = None
+        self.__clients_promotions_queue: Dict[str, Queue[str]] = {}
+
+        self.__thread_consumer: Thread = None
 
     def run(self):
         logger.info("Book Service initialized")
@@ -46,6 +51,9 @@ class BookSvc:
         )
         self.__consumer.register_callback(
             config.TICKET_GENERATED_QUEUE, self.__process_ticket
+        )
+        self.__consumer.register_callback(
+            config.PROMOTIONS_QUEUE, self.__process_promotion
         )
 
         self.__start_consumer_thread()
@@ -72,9 +80,7 @@ class BookSvc:
             timeout=config.REQUEST_TIMEOUT,
         )
 
-        logger.debug(
-            f"Payment service response: {payment_res.text}"
-        )
+        logger.debug(f"Payment service response: {payment_res.text}")
 
     def get_payment_status(self, reservation_id):
         try:
@@ -129,6 +135,31 @@ class BookSvc:
 
         logger.info(f"Reservation {reservation_id} has been cancelled.")
 
+    def create_client_promotion_queue(self, client_id: str) -> None:
+        """
+        Creates a queue for client promotions if it doesn't already exist.
+        This allows the service to send promotions to specific clients.
+        """
+        if client_id not in self.__clients_promotions_queue:
+            queue = Queue()
+            self.__clients_promotions_queue[client_id] = queue
+            logger.info(f"Created promotion queue for client {client_id}")
+        else:
+            logger.warning(f"Promotion queue for client {client_id} already exists")
+
+        return queue
+
+    def remove_client_promotion_queue(self, client_id: str) -> None:
+        """
+        Removes the client's promotion queue.
+        This is useful when a client no longer needs to receive promotions.
+        """
+        if client_id in self.__clients_promotions_queue:
+            del self.__clients_promotions_queue[client_id]
+            logger.info(f"Removed promotion queue for client {client_id}")
+        else:
+            logger.warning(f"No promotion queue found for client {client_id}")
+
     def __add_new_reservation(self, reservation: Reservation) -> None:
         self.__cached_reservations[reservation.id] = reservation
         logger.info(f"Added new reservation: {reservation.id}")
@@ -171,6 +202,17 @@ class BookSvc:
             case _:
                 logger.error(f"Unknown status: {payment.status}")
 
+    def __process_promotion(self, promotion_data: dict) -> None:
+        """
+        Process a promotion message and send it each client that has subscribed to promotions.
+        """
+        logger.info(f"Promotion received: {promotion_data}")
+
+        for client_id, queue in self.__clients_promotions_queue.items():
+            if queue:
+                queue.put(promotion_data)
+                logger.info(f"Promotion sent to client {client_id}")
+
     def __target_consumer_thread(self) -> None:
         while True:
             try:
@@ -186,17 +228,20 @@ class BookSvc:
         self.__thread_consumer.start()
 
     def __config_broker(self) -> None:
-        self.__consumer.exchange_declare(config.APP_EXCHANGE, "direct", durable=False)
+        self.__consumer.exchange_declare(
+            exchange=config.APP_EXCHANGE, exchange_type="direct"
+        )
+        self.__consumer.exchange_declare(
+            exchange=config.PROMOTIONS_EXCHANGE, exchange_type="topic"
+        )
 
-        self.__consumer.queue_declare(config.RESERVE_CREATED_QUEUE, durable=False)
-        self.__consumer.queue_declare(
-            config.APPROVED_PAYMENT_TICKET_QUEUE, durable=False
-        )
-        self.__consumer.queue_declare(
-            config.APPROVED_PAYMENT_BOOK_SVC_QUEUE, durable=False
-        )
-        self.__consumer.queue_declare(config.REFUSED_PAYMENT_QUEUE, durable=False)
-        self.__consumer.queue_declare(config.TICKET_GENERATED_QUEUE, durable=False)
+        self.__consumer.queue_declare(config.RESERVE_CREATED_QUEUE)
+        self.__consumer.queue_declare(config.APPROVED_PAYMENT_TICKET_QUEUE)
+        self.__consumer.queue_declare(config.APPROVED_PAYMENT_BOOK_SVC_QUEUE)
+        self.__consumer.queue_declare(config.REFUSED_PAYMENT_QUEUE)
+        self.__consumer.queue_declare(config.TICKET_GENERATED_QUEUE)
+        self.__consumer.queue_declare(config.QUERY_RESERVATION_QUEUE)
+        self.__consumer.queue_declare(config.PROMOTIONS_QUEUE)
 
         self.__consumer.queue_bind(
             queue_name=config.APPROVED_PAYMENT_BOOK_SVC_QUEUE,
@@ -208,6 +253,11 @@ class BookSvc:
             exchange=config.APP_EXCHANGE,
             routing_key=config.APPROVED_PAYMENT_ROUTING_KEY,
         )
+        self.__consumer.queue_bind(
+            queue_name=config.PROMOTIONS_QUEUE,
+            exchange=config.PROMOTIONS_EXCHANGE,
+            routing_key="#",  # Bind to all routing keys
+        )
 
 
 def create_flask_app(book_svc: BookSvc) -> Flask:
@@ -215,6 +265,19 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
 
     @app.route("/book/get-itineraries", methods=["POST"])
     def get_itineraries():
+        """
+        Retrieves available itineraries from the itinerary service.
+
+        Args:
+            JSON body containing itinerary search criteria, with:
+                - departure_harbor (str): The harbor of departure.
+                - arrival_harbor (str): The harbor of arrival.
+                - departure_date (str): The date of return in YYYY-MM-DD format.
+
+        Returns:
+            Response: A JSON list of itineraries from the itinerary service.
+        """
+
         itinerary_data = request.json
         response = requests.post(
             config.ITINERARY_SVC_URL + "/itinerary/get-itineraries",
@@ -226,6 +289,21 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
 
     @app.route("/book/create-reservation", methods=["POST"])
     def create_reservation():
+        """
+        Creates a reservation for a cruise based on the given client and itinerary data.
+
+        Args:
+            JSON body with:
+                - client_id (str): ID of the client making the reservation.
+                - num_of_guests (int): Number of guests included.
+                - num_of_cabinets (int): Number of cabin rooms required.
+                - itinerary_id (str): Selected itinerary identifier.
+                - total_price (float): Total price of the reservation.
+
+        Returns:
+            Response: JSON object with reservation details or confirmation message, with HTTP 200 status.
+        """
+
         reservation_dto = ReservationDTO(
             client_id=request.json["client_id"],
             number_of_guests=request.json["num_of_guests"],
@@ -238,6 +316,20 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
 
     @app.route("/book/reservation-status", methods=["GET"])
     def get_reservation_status():
+        """
+        Retrieves the payment and ticket status of a reservation.
+
+        Args:
+            reservation_id (str): ID of the reservation to check.
+
+        Returns:
+            Response: JSON object containing:
+                - payment_status (str): Current payment status.
+                - ticket_status (str): Current ticket status.
+
+            If reservation_id is missing, returns HTTP 400 with an error message.
+        """
+
         reservation_id = request.args.get("reservation_id")
         if not reservation_id:
             return (
@@ -255,6 +347,19 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
 
     @app.route("/book/cancel-reservation", methods=["DELETE"])
     def cancel_reservation():
+        """
+        Cancels a reservation by its ID.
+
+        Args:
+            JSON body with:
+                - reservation_id (str): The ID of the reservation to cancel.
+
+        Returns:
+            Response:
+                - On success: JSON confirmation message with HTTP 200.
+                - On failure (missing ID): JSON error message with HTTP 400.
+        """
+
         reservation_id = request.json.get("reservation_id")
         if not reservation_id:
             return (
@@ -264,6 +369,49 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
 
         book_svc.cancel_reservation(reservation_id)
         return jsonify({"status": "success", "message": "Reservation cancelled"}), 200
+
+    @app.route("/book/promotions-stream")
+    def get_promotions():
+        """
+        When a promotion is received, it will be sent to the client as a Server-Sent Event (SSE).
+
+        Args:
+            client_id (str): The unique identifier for the client. This is used to create a dedicated queue for the client.
+
+        Returns:
+            A JSON body with the following keys:
+                - title (str): Promotion title, e.g., "Special Offer to Bahamas!".
+                - description (str): Description of the offer.
+                - destination (str): The cruise destination.
+                - itinerary_id (str): ID of the itinerary.
+                - discount (float): Discount percentage applied.
+                - expires_in (str): Human-readable time until expiration (e.g., "24 hours").
+                - original_price (float): The original cruise price.
+                - discounted_price (float): The price after applying the discount.
+                - departure_date (str): The formatted departure date.
+                - timestamp (str): ISO-formatted timestamp of promotion creation.
+        """
+
+        client_id = request.args.get("client_id")
+        if not client_id:
+            return (
+                jsonify({"status": "error", "message": "Client ID is required"}),
+                400,
+            )
+
+        queue = book_svc.create_client_promotion_queue(client_id)
+
+        def event_stream():
+            try:
+                while True:
+                    yield json.dumps(queue.get())
+            except GeneratorExit:
+                logger.info(f"Client {client_id} disconnected from promotions stream")
+                book_svc.remove_client_promotion_queue(client_id)
+
+        return Response(
+            stream_with_context(event_stream()), mimetype="text/event-stream"
+        )
 
     @app.route("/health", methods=["GET"])
     def health_check():

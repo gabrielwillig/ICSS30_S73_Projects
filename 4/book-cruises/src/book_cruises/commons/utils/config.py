@@ -17,6 +17,7 @@ class Config(BaseSettings):
     APPROVED_PAYMENT_BOOK_SVC_QUEUE: str = "approved_payment_book_svc_queue"
     REFUSED_PAYMENT_QUEUE: str = "refused_payment_queue"
     TICKET_GENERATED_QUEUE: str = "ticket_generated_queue"
+    PROMOTIONS_QUEUE: str = "promotions_queue"
 
     # RabbitMQ Routing Keys
     APPROVED_PAYMENT_ROUTING_KEY: str = "approved_payment"
@@ -41,6 +42,7 @@ class Config(BaseSettings):
     EXTERNAL_PAYMENT_SVC_PORT: int = 5003  # Port for the external payment service
     EXTERNAL_PAYMENT_SVC_HOST: str = "localhost"  # Host for the external payment service
 
+    # Itinerary Service Configuration
     ITINERARY_SVC_WEB_SERVER_PORT: int = 5004  # Port for the Itinerary Service web server
     ITINERARY_SVC_WEB_SERVER_HOST: str = "localhost"  # Host for the Itinerary Service web server
     ITINERARY_SVC_URL: str = f"http://{ITINERARY_SVC_WEB_SERVER_HOST}:{ITINERARY_SVC_WEB_SERVER_PORT}"

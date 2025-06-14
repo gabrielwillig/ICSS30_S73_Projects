@@ -20,7 +20,7 @@ class RabbitMQConsumer:
             exchange=exchange, exchange_type=exchange_type, durable=durable
         )
 
-    def queue_declare(self, queue_name: str, durable: bool = True):
+    def queue_declare(self, queue_name: str, durable: bool = False):
         """Optionally declare a queue. Can be skipped if queue exists."""
         self.channel.queue_declare(queue=queue_name, durable=durable)
 
