@@ -197,7 +197,7 @@ class BookSvc:
                     payment.reservation_id, "approved"
                 )
                 self.__itinerary_repository.update_remaining_cabinets(
-                    payment.reservation_id, num_cabinets_to_update
+                    payment.itinerary_id, num_cabinets_to_update
                 )
             case "refused":
                 self.__update_reservation_payment_status(payment)

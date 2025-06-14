@@ -20,7 +20,7 @@ class ItineraryRepository:
         if not results:
             return []
 
-        logger.debug(f"results: {results}")
+        logger.debug(f"Results: '{results}'")
 
         # Map database rows to Itinerary domain objects
         itineraries = []
@@ -35,13 +35,13 @@ class ItineraryRepository:
         result = self.__database.execute_query(query)
 
         if not result:
-            logger.error(f"Itinerary with ID {itinerary_id} not found.")
+            logger.error(f"Itinerary with ID '{itinerary_id}' not found.")
             return
 
         row = result[0]
         itinerary = Itinerary(**row)
 
-        logger.debug(f"Retrieved itinerary: {itinerary}")
+        logger.debug(f"Retrieved itinerary: '{itinerary}'")
 
         return itinerary
 
@@ -55,4 +55,6 @@ class ItineraryRepository:
         rows_affected = self.__database.execute_query(query)
 
         if rows_affected == 0:
-            logger.error(f"Failed to update remaining cabinets for itinerary ID {itinerary_id}.")
+            logger.error(f"Failed to update remaining cabinets for itinerary ID '{itinerary_id}'.")
+        else:
+            logger.debug(f"Successfully updated remaining cabinets for itinerary ID '{itinerary_id}'.")

@@ -1,54 +1,46 @@
+import time
+
 import inject
-import uuid
-from book_cruises.commons.utils import config, logger, cryptographer
+
+from book_cruises.commons.utils import config, logger
 from book_cruises.commons.messaging import Consumer, Producer
+from book_cruises.commons.domains import Payment, Ticket
 from .di import configure_dependencies
 
 
 class TicketSvc:
     @inject.autoparams()
     def __init__(self, consumer: Consumer, producer: Producer):
-        self.__PAYMENT_PUBLIC_KEY_PATH = "src/book_cruises/ticket_svc/public_keys/payment_svc_public_key.pem"
-        self.__payment_public_key = cryptographer.load_public_key(self.__PAYMENT_PUBLIC_KEY_PATH)
-
         self.__consumer: Consumer = consumer
         self.__producer: Producer = producer
 
-    def __process_ticket(self, payment_data: dict) -> None:
-        signature_is_valid = cryptographer.verify_signature(
-            payment_data["message"],
-            payment_data["signature"],
-            self.__payment_public_key,
-        )
-        if not signature_is_valid:
-            logger.error("Invalid signature")
-            raise NotImplementedError("Invalid signature")
+    def __process_ticket(self, payment: Payment) -> None:
 
-        message = payment_data["message"]
-        status = message["status"]
-    
-        if status != "approved":
-            logger.error(f"Error processing ticket with data: {message}")
+        if payment.status != "approved":
+            logger.error(f"Error processing ticket with data: '{payment.model_dump()}'")
             return
-        
-        logger.info(f"Processing approved ticket with data: {message}")
-        ticket_data = {
-            "ticket_id": str(uuid.uuid4()),
-            "message": message
-        }
+
+        logger.info(f"Processing approved ticket with payment data: '{payment.model_dump()}'")
+
+        ticket: Ticket = Ticket.create_ticket(payment)
+
         self.__producer.publish(
             config.TICKET_GENERATED_QUEUE,
-            ticket_data,
+            ticket.model_dump(),
         )
-        logger.info(f"Ticket generated with data: {ticket_data}")
+        logger.info(f"Ticket generated with data: '{ticket}'")
 
 
     def run(self):
         logger.info("Ticket Service Initialized")
 
         self.__consumer.register_callback(config.APPROVED_PAYMENT_TICKET_QUEUE, self.__process_ticket)
-
-        self.__consumer.start_consuming()
+        while True:
+            try:
+                self.__consumer.start_consuming()
+            except Exception as e:
+                logger.error(f"Error in thread_consumer", exc_info=True)
+                time.sleep(5)
 
 
 def main() -> None:
