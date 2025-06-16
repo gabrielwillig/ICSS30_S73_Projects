@@ -138,25 +138,25 @@ services:
     networks:
       - default
 
-  # marketing-svc:
-  #   container_name: marketing-svc
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: book-cruises
-  #   restart: no
-  #   depends_on:
-  #     book-svc:
-  #       condition: service_healthy
-  #   env_file:
-  #     - .env
-  #   command: >
-  #     sh -c " uv run marketing-svc; "
-  #   volumes:
-  #     - .:/app
-  #   working_dir: /app
-  #   networks:
-  #     - default
+  marketing-svc:
+    container_name: marketing-svc
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-cruises
+    restart: no
+    depends_on:
+      book-svc:
+        condition: service_healthy
+    env_file:
+      - .env
+    command: >
+      sh -c " uv run marketing-svc; "
+    volumes:
+      - .:/app
+    working_dir: /app
+    networks:
+      - default
 
   itinerary-svc:
     container_name: itinerary-svc

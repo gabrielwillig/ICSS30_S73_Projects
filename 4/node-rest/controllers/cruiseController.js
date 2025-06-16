@@ -1,8 +1,17 @@
 /**
  * Controlador para lidar com as operações relacionadas a cruzeiros.
  */
-const axios = require('axios');
+const axios = require('axios'); // Importa o Axios para fazer requisições HTTP
+
+// Carrega as variáveis de ambiente.
+// Garanta que `require('dotenv').config()` esteja no seu `app.js`
+// e que as variáveis PYTHON_BOOK_SVC_WEB_SERVER_HOST e PYTHON_BOOK_SVC_WEB_SERVER_PORT
+// estejam definidas no seu arquivo .env.
 const PYTHON_BOOK_SVC_URL = `http://${process.env.PYTHON_BOOK_SVC_WEB_SERVER_HOST || 'localhost'}:${process.env.PYTHON_BOOK_SVC_WEB_SERVER_PORT || 5001}`;
+
+// Simula um armazenamento de reservas. Em um sistema real, isso seria um banco de dados.
+// NOTA: mockReservations não será mais usado para cancelamento, mas ainda é usado para bookCruise
+const mockReservations = new Map();
 
 /**
  * Função para buscar cruzeiros com base nos parâmetros fornecidos.
@@ -43,17 +52,18 @@ exports.searchCruises = async (req, res) => {
         });
 
         // Os dados vêm do Python com a estrutura definida (id, ship, departure_date, etc.).
-        // Adicionamos 'available_cabins' e 'available_passengers' para o frontend.
+        // O Python já fornece 'remaining_cabinets'.
+        // Adicionamos 'remaining_passengers' mockado para o frontend.
         const itinerariesFromPython = response.data;
-        console.log(`Received: `, itinerariesFromPython);
-
-        // Enriquecemos cada itinerário:
-        const enrichedItineraries = itinerariesFromPython.map(it => ({
-            ...it,
-            remaining_passengers: it.remaining_cabinets * 3
+        const augmentedItineraries = itinerariesFromPython.map(itinerary => ({
+            ...itinerary,
+            // Adiciona remaining_passengers mockado, já que não vem do backend Python
+            remaining_passengers: itinerary.remaining_cabinets * 3 // Exemplo: 1 a 20 passageiros
+            // remaining_cabinets já vem do Python, então não precisamos adicionar mock aqui.
+            // A validação de remaining_cabinets > 0 será feita no front-end ou no serviço de itinerários Python
         }));
 
-        res.status(response.status).json(enrichedItineraries);
+        res.status(response.status).json(augmentedItineraries);
 
     } catch (error) {
         console.error(`Error in searchCruises when calling Python backend: ${error.message}`);
@@ -115,36 +125,17 @@ exports.bookCruise = async (req, res) => {
             timeout: 7000 // Timeout para a requisição ao backend Python
         });
 
-        // O backend Python (MS Reserva) retorna um JSON que contém o ID da reserva
-        // e o payment_link gerado pelo MS Pagamento.
-        const pythonBookingResult = response.data; // Assumimos que o retorno é um objeto JSON.
-        console.log(`Received booking response from Python:`, pythonBookingResult);
-        // Verifica se a resposta do Python contém os campos esperados (id e payment_link)
-        // Se o Python agora só retorna { message: 'External payment service is processing...' },
-        // então não teremos id nem payment_link aqui, e a lógica de polling precisará de um ID
-        // gerado ou retornado de forma diferente.
-        // ASSUMIR QUE O PYTHON AINDA RETORNA 'id' e 'payment_link' NO CORPO DA RESPOSTA.
-        if (!pythonBookingResult.id || !pythonBookingResult.payment_link) {
-            // Este bloco será ativado se o Python não retornar 'id' ou 'payment_link'.
-            // Se o Python apenas retornar { message: '...' }, você precisaria de
-            // um ID de reserva de alguma outra forma para fazer o polling.
-            // Para este caso, vamos assumir que 'id' e 'payment_link' *ainda* vêm na resposta inicial.
-            console.error('Python Book Service returned unexpected data (missing id or payment_link):', pythonBookingResult);
-            // Fallback: Gerar um ID localmente se o Python não fornecer (menos ideal)
-            const fallbackReservationId = `RES_FALLBACK_${Date.now()}`;
-            const fallbackPaymentLink = `https://mock-payment.com/fallback-pay?id=${fallbackReservationId}`;
-            console.warn(`Falling back to local reservation ID and payment link for polling: ${fallbackReservationId}`);
-            res.status(200).json({
-                message: pythonBookingResult.message || 'Reservation creation initiated. Checking status...',
-                reservation_code: fallbackReservationId,
-                payment_link: fallbackPaymentLink
-            });
-            return; // Termina a função aqui para evitar processar o resto com dados inconsistentes
+        // O backend Python (MS Reserva) retorna um JSON com message, payment_link, reservation_id
+        const pythonBookingResult = response.data;
+
+        // Verifica se a resposta do Python contém os campos esperados
+        if (!pythonBookingResult.reservation_id || !pythonBookingResult.payment_link) {
+            console.error('Python Book Service returned unexpected data (missing reservation_id or payment_link):', pythonBookingResult);
+            return res.status(500).json({ error: 'Failed to create reservation: Unexpected response from booking service.' });
         }
 
         // Armazena a reserva localmente no Node.js (se necessário para cancelamento, etc.)
-        // Usamos o 'id' retornado pelo Python como o reservation_code
-        mockReservations.set(pythonBookingResult.id, {
+        mockReservations.set(pythonBookingResult.reservation_id, {
             ...pythonBookingResult,
             status: 'pending_payment', // Status inicial, antes de interagir com o pagamento
             timestamp: new Date().toISOString()
@@ -153,7 +144,7 @@ exports.bookCruise = async (req, res) => {
         // Envia a resposta de volta para o frontend
         res.status(200).json({
             message: pythonBookingResult.message || 'Reservation successfully created. Proceed to payment.',
-            reservation_code: pythonBookingResult.id, // ID da reserva do Python
+            reservation_id: pythonBookingResult.reservation_id, // Usar reservation_id do Python
             payment_link: pythonBookingResult.payment_link
         });
 
@@ -164,7 +155,7 @@ exports.bookCruise = async (req, res) => {
             console.error('Python Backend Response Error Data:', error.response.data);
             console.error('Python Backend Response Status:', error.response.status);
             res.status(error.response.status).json({
-                error: error.response.data.error || error.response.data.message || 'Error from Python backend while booking cruise.'
+                error: error.response.data.message || 'Error from Python backend while booking cruise.'
             });
         } else if (error.request) {
             // A requisição foi feita, mas nenhuma resposta foi recebida
@@ -180,23 +171,31 @@ exports.bookCruise = async (req, res) => {
 
 /**
  * Handles the cancellation of a reservation.
- * Now communicates with the Python Book Service at /book/cancel-reservation using DELETE.
+ * Now communicates directly with the Python Book Service at /book/cancel-reservation using DELETE.
  *
  * @param {object} req - Express request object.
  * @param {object} res - Express response object.
  */
 exports.cancelReservation = async (req, res) => {
     try {
-        const { reservation_code } = req.body; // Frontend envia 'reservation_code'
+        const { reservation_code } = req.body; // Frontend envia 'reservation_code' como string
 
         if (!reservation_code) {
             console.error('Error 400: Reservation code is required for cancellation.');
             return res.status(400).json({ error: 'Reservation code is required.' });
         }
 
-        // Payload para o backend Python
+        // Converte o reservation_code para um número inteiro, como esperado pelo backend Python
+        const reservationIdInt = parseInt(reservation_code, 10);
+
+        if (isNaN(reservationIdInt)) {
+            console.error('Error 400: Invalid reservation code format. Must be an integer.');
+            return res.status(400).json({ error: 'Invalid reservation code format. Must be an integer.' });
+        }
+
+        // Payload para o backend Python com o ID como inteiro
         const payloadToPython = {
-            reservation_id: reservation_code // Mapeia 'reservation_code' para 'reservation_id'
+            reservation_id: reservationIdInt // Mapeia 'reservation_code' para 'reservation_id' (int)
         };
 
         console.log(`Forwarding cancellation request to Python Book Service at ${PYTHON_BOOK_SVC_URL}/book/cancel-reservation with data:`, payloadToPython);
@@ -208,20 +207,18 @@ exports.cancelReservation = async (req, res) => {
         });
 
         // O backend Python retorna um JSON como {"status": "success", "message": "Reservation cancelled"}
-        // Podemos usar a mensagem diretamente
         const pythonCancellationResult = response.data;
 
         if (pythonCancellationResult.status === "success") {
-            // Se a API Python confirmar o sucesso, removemos do mock local
+            // Removemos a reserva do mock local se ela foi registrada lá, embora não seja mais a fonte principal
             if (mockReservations.has(reservation_code)) {
                 mockReservations.delete(reservation_code);
                 console.log(`Reservation ${reservation_code} removed from local mock.`);
             }
             res.status(200).json({ message: pythonCancellationResult.message });
         } else {
-            // Caso o backend Python retorne um status de sucesso mas a mensagem não seja de sucesso.
-            // (Ex: pode retornar 200 com "Reservation already cancelled")
-            res.status(200).json({ message: pythonCancellationResult.message });
+            // Caso o backend Python retorne um status de sucesso (200) mas com um status interno diferente de "success"
+            res.status(200).json({ message: pythonCancellationResult.message || 'Cancellation processed with an unexpected status.' });
         }
 
     } catch (error) {
@@ -231,7 +228,7 @@ exports.cancelReservation = async (req, res) => {
             console.error('Python Backend Response Error Data:', error.response.data);
             console.error('Python Backend Response Status:', error.response.status);
             res.status(error.response.status).json({
-                error: error.response.data.message || 'Error from Python backend while cancelling reservation.' // Use .message para erro
+                error: error.response.data.message || 'Error from Python backend while cancelling reservation.'
             });
         } else if (error.request) {
             // A requisição foi feita, mas nenhuma resposta foi recebida
@@ -241,6 +238,50 @@ exports.cancelReservation = async (req, res) => {
             // Algo aconteceu ao configurar a requisição que disparou um erro
             console.error('Error setting up request to Python backend:', error.message);
             res.status(500).json({ error: 'Internal server error while setting up reservation cancellation.' });
+        }
+    }
+};
+
+/**
+ * Retrieves the payment and ticket status of a reservation from the Python Book Service.
+ *
+ * @param {object} req - Express request object. Expects 'reservation_id' in query.
+ * @param {object} res - Express response object.
+ */
+exports.getReservationStatus = async (req, res) => {
+    try {
+        const { reservation_id } = req.query; // Python expects 'reservation_id' in query params
+
+        if (!reservation_id) {
+            console.error('Error 400: Reservation ID is required for status check.');
+            return res.status(400).json({ error: 'Reservation ID is required.' });
+        }
+
+        console.log(`Forwarding status check request for reservation ID: ${reservation_id} to Python Book Service.`);
+
+        // Faz a requisição GET para o backend Python (MS Reserva)
+        const response = await axios.get(`${PYTHON_BOOK_SVC_URL}/book/reservation-status`, {
+            params: { reservation_id: parseInt(reservation_id, 10) }, // Passa o ID como query parameter (agora como int)
+            timeout: 5000 // Timeout de 5 segundos
+        });
+
+        // O Python retorna {"payment_status": "...", "ticket_status": "..."}
+        res.status(response.status).json(response.data);
+
+    } catch (error) {
+        console.error(`Error in getReservationStatus when calling Python backend: ${error.message}`);
+        if (error.response) {
+            console.error('Python Backend Response Error Data:', error.response.data);
+            console.error('Python Backend Response Status:', error.response.status);
+            res.status(error.response.status).json({
+                error: error.response.data.message || 'Error from Python backend while checking reservation status.'
+            });
+        } else if (error.request) {
+            console.error('No response received from Python backend:', error.request);
+            res.status(504).json({ error: 'Gateway Timeout: No response from Python backend for status check.' });
+        } else {
+            console.error('Error setting up request to Python backend:', error.message);
+            res.status(500).json({ error: 'Internal server error while setting up reservation status check.' });
         }
     }
 };

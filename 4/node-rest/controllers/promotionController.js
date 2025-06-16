@@ -1,92 +1,20 @@
 /**
  * Controlador para lidar com as operações relacionadas a promoções e Server-Sent Events (SSE).
  */
+const axios = require('axios'); // Já importado, mas útil para referência futura
 
-// Conjunto para armazenar os e-mails dos usuários inscritos em promoções (simula um banco de dados).
-const subscribedEmails = new Set();
-// Mapa para armazenar as conexões SSE ativas, mapeando e-mail para o objeto de resposta (res).
-const activeSSEConnections = new Map();
+// Carrega as variáveis de ambiente para a URL do Book Service Python
+const PYTHON_BOOK_SVC_URL = `http://${process.env.PYTHON_BOOK_SVC_WEB_SERVER_HOST || 'localhost'}:${process.env.PYTHON_BOOK_SVC_WEB_SERVER_PORT || 5001}`;
 
-// Dados simulados de promoções.
-const mockPromotions = [
-    {
-        title: "Caribbean Dream Cruise",
-        discount: 20,
-        expires_in: 48, // hours
-        description: "Explore the beautiful islands of the Caribbean with an amazing discount! Don't miss this opportunity to relax and enjoy the sun, sea, and sand.",
-        original_price: 1800.00,
-        discounted_price: 1440.00,
-        departure_date: "2025-08-15"
-    },
-    {
-        title: "Mediterranean Discovery",
-        discount: 15,
-        expires_in: 72,
-        description: "Uncover the history and charm of the Mediterranean Sea. Visit ancient cities and indulge in exquisite cuisine.",
-        original_price: 2500.00,
-        discounted_price: 2125.00,
-        departure_date: "2025-09-10"
-    },
-    {
-        title: "Alaskan Wilderness Expedition",
-        discount: 25,
-        expires_in: 24,
-        description: "Embark on an unforgettable journey through the Alaskan wilderness. Witness breathtaking glaciers and abundant wildlife.",
-        original_price: 3500.00,
-        discounted_price: 2625.00,
-        departure_date: "2025-07-01"
-    },
-    {
-        title: "Norwegian Fjords Adventure",
-        discount: 10,
-        expires_in: 96,
-        description: "Experience the stunning landscapes of the Norwegian Fjords. A serene and majestic voyage awaits you.",
-        original_price: 2000.00,
-        discounted_price: 1800.00,
-        departure_date: "2025-06-20"
-    }
-];
-
-/**
- * Envia uma promoção específica para um cliente via SSE.
- * @param {string} email - O e-mail do cliente para quem enviar a promoção.
- * @param {Object} promotion - O objeto de promoção a ser enviado.
- */
-function sendPromotionToClient(email, promotion) {
-    const res = activeSSEConnections.get(email);
-    if (res && subscribedEmails.has(email)) {
-        res.write(`data: ${JSON.stringify(promotion)}\n\n`);
-        console.log(`Sent promotion to ${email}: ${promotion.title}`);
-    } else {
-        // Se a conexão não existir ou o e-mail não estiver mais inscrito, remove a conexão.
-        if (res) {
-            console.log(`Connection for ${email} is no longer subscribed or connection lost. Ending SSE stream.`);
-            res.end(); // Encerra a conexão se o usuário não está mais inscrito
-            activeSSEConnections.delete(email);
-        }
-    }
-}
-
-// Configura um intervalo para enviar a mesma promoção periodicamente a cada 5 segundos.
-// Em um ambiente de produção, este intervalo e a lógica de envio seriam mais sofisticados.
-setInterval(() => {
-    // Verifica se há promoções disponíveis e clientes inscritos para enviar
-    if (mockPromotions.length === 0 || subscribedEmails.size === 0) {
-        return; // Não há promoções ou inscritos para enviar
-    }
-
-    // Seleciona UMA promoção aleatória para ser enviada a todos os clientes neste ciclo.
-    const randomIndex = Math.floor(Math.random() * mockPromotions.length);
-    const promotionToSend = mockPromotions[randomIndex];
-
-    // Itera sobre todas as conexões SSE ativas e envia A MESMA promoção selecionada
-    activeSSEConnections.forEach((res, email) => {
-        sendPromotionToClient(email, promotionToSend);
-    });
-}, 30000); // Envia a promoção a cada 5 segundos
+// Mapa para armazenar as conexões SSE ativas do Node.js para o FRONTEND.
+// Usado para encerrar streams quando o usuário desinscreve ou desconecta.
+const activeFrontendSSEConnections = new Map();
 
 /**
  * Manipula a requisição POST para registrar interesse em promoções.
+ * Agora apenas confirma a intenção de subscrição para o frontend.
+ * A subscrição real para o stream de promoções ocorre ao estabelecer a conexão SSE.
+ *
  * @param {object} req - Objeto de requisição do Express.
  * @param {object} res - Objeto de resposta do Express.
  */
@@ -98,15 +26,15 @@ exports.subscribePromotionInterest = (req, res) => {
         return res.status(400).json({ error: 'Email is required.' });
     }
 
-    // Adiciona o e-mail ao conjunto de inscritos.
-    subscribedEmails.add(email);
-    console.log(`Email ${email} subscribed to promotions. Current subscribers:`, Array.from(subscribedEmails));
-
-    res.status(200).json({ message: 'Successfully subscribed to promotions.' });
+    // A subscrição para o stream será efetivada quando o cliente abrir a conexão SSE
+    console.log(`Received subscription intent for email: ${email}. Client should now open SSE connection.`);
+    res.status(200).json({ message: 'Subscription request received. Please connect to the promotion stream.' });
 };
 
 /**
  * Manipula a requisição POST para cancelar interesse em promoções.
+ * Agora apenas confirma a intenção de desubscrição para o frontend e encerra qualquer conexão SSE ativa.
+ *
  * @param {object} req - Objeto de requisição do Express.
  * @param {object} res - Objeto de resposta do Express.
  */
@@ -118,64 +46,118 @@ exports.unsubscribePromotionInterest = (req, res) => {
         return res.status(400).json({ error: 'Email is required.' });
     }
 
-    // Remove o e-mail do conjunto de inscritos.
-    const wasDeleted = subscribedEmails.delete(email);
-    console.log(`Email ${email} unsubscribed from promotions. Current subscribers:`, Array.from(subscribedEmails));
-
-    // Se houver uma conexão SSE ativa para este e-mail, encerra-a.
-    if (activeSSEConnections.has(email)) {
-        const clientRes = activeSSEConnections.get(email);
-        clientRes.end(); // Encerra a conexão SSE
-        activeSSEConnections.delete(email);
-        console.log(`SSE connection for ${email} terminated due to unsubscription.`);
-    }
-
-    if (wasDeleted) {
+    // Se houver uma conexão SSE ativa do Node.js para o frontend para este e-mail, encerra-a.
+    // Isso efetivamente "desinscreve" o cliente do stream.
+    if (activeFrontendSSEConnections.has(email)) {
+        const clientRes = activeFrontendSSEConnections.get(email);
+        clientRes.end(); // Encerra a conexão SSE do Node.js para o frontend
+        activeFrontendSSEConnections.delete(email);
+        console.log(`SSE connection from Node.js to frontend for ${email} terminated due to unsubscription request.`);
         res.status(200).json({ message: 'Successfully unsubscribed from promotions.' });
     } else {
-        res.status(404).json({ error: 'Email not found in subscriptions.' });
+        // Se não houver conexão ativa, o cliente já está "desinscrito" do stream.
+        console.log(`Unsubscription request for ${email}. No active SSE connection found.`);
+        res.status(200).json({ message: 'Email not found in active promotion streams (already unsubscribed).' });
     }
 };
 
 /**
  * Manipula a conexão SSE para streaming de promoções.
+ * Atua como um proxy, retransmitindo a stream SSE do backend Python para o frontend.
+ * A "subscrição" é implícita pela manutenção desta conexão.
+ *
  * @param {object} req - Objeto de requisição do Express.
  * @param {object} res - Objeto de resposta do Express.
  */
-exports.streamPromotions = (req, res) => {
-    const { email } = req.query; // Pega o e-mail da query parameter
+exports.streamPromotions = async (req, res) => {
+    const clientEmail = req.query.email; // Pega o e-mail do frontend (será o client_id para o Python)
 
-    if (!email) {
+    if (!clientEmail) {
         console.error('Error 400: Email parameter is required for SSE connection.');
         return res.status(400).send('Email parameter is required.');
     }
 
-    // Configura os cabeçalhos para SSE
+    // Se já houver uma conexão SSE ativa para este e-mail, encerra a antiga antes de abrir uma nova.
+    if (activeFrontendSSEConnections.has(clientEmail)) {
+        console.log(`Existing SSE connection for ${clientEmail} found. Closing old connection.`);
+        activeFrontendSSEConnections.get(clientEmail).end();
+        activeFrontendSSEConnections.delete(clientEmail);
+    }
+
+    // Configura os cabeçalhos para SSE para a conexão Node.js -> Frontend
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
     });
 
-    // Envia um "ping" inicial para garantir que a conexão está ativa
+    // Armazena a nova conexão do Node.js para o frontend
+    activeFrontendSSEConnections.set(clientEmail, res);
+
+    console.log(`SSE connection established from Node.js to frontend for ${clientEmail}.`);
+    // NOTE: Sending an initial 'connection established' message is fine,
+    // but ensure it's also properly formatted for SSE.
     res.write('data: {"message": "SSE connection established."}\n\n');
-    console.log(`SSE connection established for ${email}.`);
 
-    // Adiciona a conexão ao mapa de conexões ativas
-    activeSSEConnections.set(email, res);
+    try {
+        // Conecta-se ao endpoint SSE do backend Python, passando o email como client_id
+        const pythonStreamResponse = await axios.get(`${PYTHON_BOOK_SVC_URL}/book/promotions-stream`, {
+            params: { client_id: clientEmail }, // Envia o email como client_id
+            responseType: 'stream', // Importante para Axios lidar com streams
+            timeout: 0 // Sem timeout para a stream, ela deve permanecer aberta
+        });
 
-    // Envia a primeira promoção imediatamente após a conexão, se o e-mail estiver inscrito
-    if (subscribedEmails.has(email)) {
-        // Envia a mesma promoção aleatória que o setInterval usaria para começar a stream
-        if (mockPromotions.length > 0) {
-            const randomIndex = Math.floor(Math.random() * mockPromotions.length);
-            sendPromotionToClient(email, mockPromotions[randomIndex]);
+        const pythonStream = pythonStreamResponse.data;
+
+        // Repassa os dados da stream do Python diretamente para o frontend (Node.js -> Frontend)
+        pythonStream.on('data', (chunk) => {
+            // Cada 'chunk' pode conter um ou mais eventos SSE.
+            // O Python está enviando o JSON puro, então precisamos formatá-lo para SSE.
+            const dataString = chunk.toString().trim();
+            // Basic check to ensure it's not empty or just whitespace
+            if (dataString) {
+                // Prepend 'data: ' and append '\n\n' for proper SSE framing
+                const formattedEvent = `data: ${dataString}\n\n`;
+                console.log(`Forwarding formatted SSE event to frontend for ${clientEmail}:`, formattedEvent); // Log do evento formatado
+                res.write(formattedEvent);
+            }
+        });
+
+        pythonStream.on('end', () => {
+            console.log(`Python promotion stream ended for ${clientEmail}.`);
+            res.end(); // Encerra a conexão Node.js -> Frontend quando a do Python termina
+            activeFrontendSSEConnections.delete(clientEmail);
+        });
+
+        pythonStream.on('error', (error) => {
+            console.error(`Error in Python promotion stream for ${clientEmail}:`, error);
+            // Check if headers have already been sent to avoid "ERR_STREAM_WRITE_AFTER_END"
+            if (!res.headersSent) {
+                res.status(500).end('Error receiving promotions from Python backend.');
+            } else {
+                res.end(); // Just end the response if headers already sent
+            }
+            activeFrontendSSEConnections.delete(clientEmail);
+        });
+
+        // Quando o cliente do frontend desconectar (browser fecha, recarrega, etc.)
+        req.on('close', () => {
+            console.log(`Frontend client disconnected for ${clientEmail}. Ending Python stream.`);
+            // IMPORTANTE: Se o cliente frontend desconectar, devemos destruir a stream para o Python
+            // para que o Python possa limpar sua fila e liberar recursos.
+            pythonStream.destroy();
+            activeFrontendSSEConnections.delete(clientEmail);
+        });
+
+    } catch (error) {
+        console.error(`Error connecting to Python promotions stream for ${clientEmail}:`, error.message);
+        if (error.response) {
+            console.error('Python Backend Stream Error Data:', error.response.data);
+            console.error('Python Backend Stream Status:', error.response.status);
+            res.status(error.response.status).end(error.response.data.message || 'Error connecting to Python promotion stream.');
+        } else {
+            res.status(500).end('Internal server error or Python stream unavailable.');
         }
+        activeFrontendSSEConnections.delete(clientEmail);
     }
-
-    // Remove a conexão quando o cliente desconecta
-    req.on('close', () => {
-        activeSSEConnections.delete(email);
-        console.log(`SSE connection closed for ${email}.`);
-    });
 };

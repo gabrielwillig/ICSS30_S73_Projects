@@ -81,7 +81,7 @@ class BookSvc:
             timeout=config.REQUEST_TIMEOUT,
         )
 
-        logger.debug(f"Payment service response: {payment_res.text}")
+        logger.debug(f"Payment service response: {payment_res.json()}")
 
         return payment_res.json()
 
@@ -120,10 +120,10 @@ class BookSvc:
         Cancels a reservation by its ID.
         This method updates the reservation status to 'cancelled' and notifies the user.
         """
+        logger.error(self.__cached_reservations)
         if reservation_id not in self.__cached_reservations:
             logger.error(f"Reservation ID {reservation_id} not found.")
             return
-
         self.__reservation_repository.update_status(reservation_id, Reservation.CANCELLED)
         self.__cached_reservations[reservation_id].reservation_status = Reservation.CANCELLED
 
@@ -299,7 +299,10 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
                 - total_price (float): Total price of the reservation.
 
         Returns:
-            Response: JSON object with reservation details or confirmation message, with HTTP 200 status.
+            Response: JSON object containing:
+                - message (str): Message from payment service in case of success.
+                - payment_link (str): An external link to the payment page.
+                - reservation_id (str): Unique identifier for the created reservation.
         """
 
         reservation_dto = ReservationDTO(

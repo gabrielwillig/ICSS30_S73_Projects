@@ -27,7 +27,13 @@ class PaymentSvc:
             timeout=config.REQUEST_TIMEOUT,
         )
 
-        return response.json()
+        reservation_info = {
+            "reservation_id": reservation.id,
+            "payment_link": f"http://{config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_HOST}:{config.EXTERNAL_PAYMENT_SVC_WEB_SERVER_PORT}/payment_link?reservation_id={reservation.id}&client_id={reservation.client_id}",
+        }
+
+        reservation_info.update(response.json())
+        return reservation_info
 
     def handle_payment_status(self, payment: Payment) -> tuple[dict, int]:
         match payment.status:

@@ -38,6 +38,9 @@ let currentBookingItineraryId = null;
 // Stores the fetched cruise data for quick lookup by itinerary ID
 let fetchedCruisesMap = new Map();
 
+// Map to store active polling intervals for reservations (kept for potential future use, but not called)
+const activeReservationPolling = new Map();
+
 // --- Helper Functions ---
 
 /**
@@ -193,12 +196,19 @@ function connectSSE(email) {
 
     eventSource.onerror = (error) => {
         console.error('SSE Error:', error);
-        showMessage('Error receiving promotions. Please check your subscription status or try again later.', 'error');
-        eventSource.close(); // Close on error to prevent continuous retries
+        // Do not display an error message if the stream closes due to a deliberate disconnect
+        // This check is a simple heuristic; a more robust solution might track the intent of disconnection.
+        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+             console.log('SSE connection closed intentionally or by server.');
+             showMessage('Disconnected from promotion stream.', 'info');
+             promotionsContainer.innerHTML = `<p class="text-gray-600 text-center">Disconnected from promotions.</p>`;
+        } else {
+            showMessage('Error receiving promotions. Please check your subscription status or try again later.', 'error');
+            promotionsContainer.innerHTML = `<p class="text-gray-600 text-center">Error: Could not connect to promotions stream.</p>`;
+        }
+        eventSource.close(); // Ensure connection is closed on error
         eventSource = null;
-        // Also uncheck the checkbox if there's an error
-        subscribeCheckbox.checked = false;
-        // Optionally update the UI to reflect connection status
+        subscribeCheckbox.checked = false; // Uncheck checkbox to reflect disconnected state
     };
 }
 
@@ -209,7 +219,7 @@ function disconnectSSE() {
     if (eventSource) {
         eventSource.close();
         eventSource = null;
-        console.log('SSE connection closed.');
+        console.log('SSE connection closed manually.');
         showMessage('Disconnected from promotion stream.', 'info');
         promotionsContainer.innerHTML = `<p class="text-gray-600 text-center">Disconnected from promotions.</p>`;
     }
@@ -313,39 +323,18 @@ searchButton.addEventListener('click', async () => {
 updateSubscriptionButton.addEventListener('click', async () => {
     const email = promotionEmailInput.value.trim();
     if (!email) {
-        showMessage('Please enter an email to update your subscription.', 'error');
-        // Uncheck the box if email is empty and user tries to subscribe
-        if (subscribeCheckbox.checked) {
-            subscribeCheckbox.checked = false;
-        }
+        showMessage('Please enter an email to manage your subscription.', 'error');
         return;
     }
 
-    try {
-        if (subscribeCheckbox.checked) {
-            // User wants to subscribe
-            const response = await axios.post('/api/promotions/subscribe', { email });
-            showMessage(response.data.message, 'success');
-            console.log('Subscription response:', response.data.message);
-            // Connect SSE only if subscription is successful
-            connectSSE(email);
-        } else {
-            // User wants to unsubscribe
-            const response = await axios.post('/api/promotions/unsubscribe', { email });
-            showMessage(response.data.message, 'success');
-            console.log('Unsubscription response:', response.data.message);
-            // Disconnect SSE only if unsubscription is successful
-            disconnectSSE();
-        }
-    } catch (error) {
-        console.error('Error updating subscription:', error);
-        if (error.response && error.response.data && error.response.data.error) {
-            showMessage(`Error: ${error.response.data.error}`, 'error');
-        } else {
-            showMessage('Error communicating with the server regarding subscription. Please try again later.', 'error');
-        }
-        // If an error occurs, revert the checkbox state to reflect actual status
-        subscribeCheckbox.checked = !subscribeCheckbox.checked;
+    if (subscribeCheckbox.checked) {
+        // User wants to subscribe: directly connect SSE
+        showMessage('Connecting to promotion stream...', 'info');
+        connectSSE(email);
+    } else {
+        // User wants to unsubscribe: directly disconnect SSE
+        disconnectSSE();
+        showMessage('Unsubscription request sent. Disconnecting from stream...', 'info');
     }
 });
 
@@ -376,16 +365,25 @@ confirmBookingButton.addEventListener('click', async () => {
     const total_price = cruise.price * num_passengers; // Calculate total price
 
     try {
+        // Clear previous booking results/messages in the modal
+        clearMessage(bookingResultArea);
+        showMessage('Initiating booking...', 'info', bookingResultArea); // Indicate processing
+
         const response = await axios.post('/api/book-cruise', {
             itinerary_id,
             num_passengers,
             num_cabins,
             total_price // Include total_price in the payload
         });
-        showMessage(`Booking successful! Reservation Code: ${response.data.reservation_code}. Payment Link: <a href="${response.data.payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
 
-        // Optionally close modal after successful booking
-        // setTimeout(closeBookingModal, 5000); // Close after 5 seconds
+        // Extract message, reservation_id, and payment_link from the response.data
+        const { message, reservation_id, payment_link } = response.data;
+
+        // Display initial booking success message and payment link
+        showMessage(`${message} Reservation Code: <span class="font-semibold">${reservation_id}</span>. Payment Link: <a href="${payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
+
+        // Removed the call to startPollingReservationStatus(reservation_id); as requested.
+
     } catch (error) {
         console.error('Error booking cruise:', error);
         if (error.response && error.response.data && error.response.data.error) {
@@ -422,7 +420,14 @@ cancelReservationButton.addEventListener('click', async () => {
 
 
 // Event listeners for modal close button and clicking outside the modal
-closeButton.addEventListener('click', closeBookingModal);
+closeButton.addEventListener('click', () => {
+    // When modal closes, stop any active polling for the current booking if it exists
+    if (currentBookingItineraryId) {
+        // The previous note still applies: currentBookingItineraryId doesn't directly map to reservation_code.
+        // But since polling is no longer initiated automatically here, this is less critical.
+    }
+    closeBookingModal();
+});
 window.addEventListener('click', (event) => {
     if (event.target === bookingModal) {
         closeBookingModal();
