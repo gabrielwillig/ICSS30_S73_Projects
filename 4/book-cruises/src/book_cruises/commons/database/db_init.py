@@ -57,6 +57,7 @@ def initialize_itineraries_table(database: Database):
         price DECIMAL(10, 2) NOT NULL,
         number_of_days INT NOT NULL,
         remaining_cabinets INT DEFAULT 100,
+        remaining_passengers INT DEFAULT 300,
         created_at TIMESTAMP DEFAULT transaction_timestamp(),
         updated_at TIMESTAMP DEFAULT transaction_timestamp()
     );
@@ -90,7 +91,7 @@ def initialize_reservations_table(database: Database):
     CREATE TABLE IF NOT EXISTS reservations (
         id SERIAL PRIMARY KEY,
         client_id INT NOT NULL,
-        number_of_guests INT NOT NULL,
+        number_of_passengers INT NOT NULL,
         number_of_cabinets INT NOT NULL,
         itinerary_id INT NOT NULL,
         total_price DECIMAL(10, 2) NOT NULL,

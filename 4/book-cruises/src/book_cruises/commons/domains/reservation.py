@@ -12,8 +12,8 @@ class Reservation(BaseModel):
 
     id: int = Field(description="Unique identifier for the reservation")
     client_id: int = Field(description="Unique identifier for the client")
-    number_of_guests: int = Field(
-        description="Number of guests included in the reservation"
+    number_of_passengers: int = Field(
+        description="Number of passengers included in the reservation"
     )
     number_of_cabinets: int = Field(description="Number of cabinets reserved")
     itinerary_id: int = Field(description="Identifier for the itinerary")
@@ -46,8 +46,8 @@ class Reservation(BaseModel):
 
 class ReservationDTO(BaseModel):
     client_id: int = Field(description="Unique identifier for the client")
-    number_of_guests: int = Field(
-        description="Number of guests included in the reservation"
+    number_of_passengers: int = Field(
+        description="Number of passengers included in the reservation"
     )
     number_of_cabinets: int = Field(description="Number of cabinets reserved")
     itinerary_id: int = Field(description="Itinerary ID for the reservation")

@@ -16,6 +16,7 @@ class MarketingSvc:
         self.__database: Database = database
         self.__promotion_thread = None
         self.__destinations = []
+        self.__promotions_delay = 50
 
     def __get_available_destinations(self):
         """Fetch unique destinations from database"""
@@ -120,8 +121,8 @@ class MarketingSvc:
                         exchange=config.PROMOTIONS_EXCHANGE,
                     )
 
-            # Wait before generating next promotion (5-15 seconds)
-            time.sleep(random.uniform(5, 15))
+            # Wait before generating next promotion (50-150 seconds)
+            time.sleep(random.uniform(self.__promotions_delay, 3 * self.__promotions_delay))
 
     def run(self):
         """Start the marketing service"""

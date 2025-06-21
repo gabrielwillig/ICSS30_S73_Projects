@@ -112,7 +112,7 @@ exports.bookCruise = async (req, res) => {
         // Mapeando os nomes dos campos conforme o ReservationDTO do Python
         const payloadToPython = {
             client_id: 0, // Mocked client_id as discussed for academic project
-            num_of_guests: num_passengers, // Alterado de 'passengers' para 'num_of_guests'
+            num_of_passengers: num_passengers, // Alterado de 'passengers' para 'num_of_passengers'
             num_of_cabinets: num_cabins, // Alterado de 'num_cabins' para 'num_of_cabinets'
             itinerary_id: itinerary_id,
             total_price: total_price

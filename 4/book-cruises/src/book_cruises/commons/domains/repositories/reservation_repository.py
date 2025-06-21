@@ -14,14 +14,14 @@ class ReservationRepository:
         query = f"""
             INSERT INTO reservations (
                 client_id,
-                number_of_guests,
+                number_of_passengers,
                 number_of_cabinets,
                 itinerary_id,
                 total_price
             )
             VALUES (
                 {reservation_dto.client_id},
-                {reservation_dto.number_of_guests},
+                {reservation_dto.number_of_passengers},
                 {reservation_dto.number_of_cabinets},
                 {reservation_dto.itinerary_id},
                 {reservation_dto.total_price}
@@ -29,7 +29,7 @@ class ReservationRepository:
             RETURNING
                 id,
                 client_id,
-                number_of_guests,
+                number_of_passengers,
                 number_of_cabinets,
                 itinerary_id,
                 total_price,
@@ -56,7 +56,7 @@ class ReservationRepository:
             RETURNING
                 id,
                 client_id,
-                number_of_guests,
+                number_of_passengers,
                 number_of_cabinets,
                 itinerary_id,
                 total_price,

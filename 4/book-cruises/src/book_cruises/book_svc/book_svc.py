@@ -157,8 +157,16 @@ class BookSvc:
     def __add_new_reservation(self, reservation: Reservation) -> None:
         self.__cached_reservations[reservation.id] = reservation
         logger.info(f"Added new reservation: {reservation.id}")
+        logger.debug(
+            f"Cached reservations: {self.__cached_reservations.keys()}"
+        )
 
     def __update_reservation_payment_status(self, payment: Payment) -> None:
+        if not payment.reservation_id in self.__cached_reservations:
+            logger.error(
+                f"Reservation ID '{payment.reservation_id}' not found in cached reservations: {self.__cached_reservations.keys()}"
+            )
+            return
         self.__cached_reservations[payment.reservation_id].payment_status = (
             payment.status
         )
@@ -293,7 +301,7 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
         Args:
             JSON body with:
                 - client_id (str): ID of the client making the reservation.
-                - num_of_guests (int): Number of guests included.
+                - num_of_passengers (int): Number of passengers included.
                 - num_of_cabinets (int): Number of cabin rooms required.
                 - itinerary_id (str): Selected itinerary identifier.
                 - total_price (float): Total price of the reservation.
@@ -304,10 +312,10 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
                 - payment_link (str): An external link to the payment page.
                 - reservation_id (str): Unique identifier for the created reservation.
         """
-
+        logger.debug(f"Creating reservation with data: {request.json}")
         reservation_dto = ReservationDTO(
             client_id=request.json["client_id"],
-            number_of_guests=request.json["num_of_guests"],
+            number_of_passengers=request.json["num_of_passengers"],
             number_of_cabinets=request.json["num_of_cabinets"],
             itinerary_id=request.json["itinerary_id"],
             total_price=request.json["total_price"],
