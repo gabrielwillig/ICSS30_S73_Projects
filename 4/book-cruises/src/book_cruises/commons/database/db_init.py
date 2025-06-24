@@ -63,6 +63,7 @@ def initialize_itineraries_table(database: Database):
     );
     """
     database.execute_query(create_table_query)
+    database.commit()
 
     # Check if the table is empty
     check_table_query = "SELECT COUNT(*) AS count FROM itineraries;"
@@ -90,7 +91,7 @@ def initialize_reservations_table(database: Database):
     create_table_query = """
     CREATE TABLE IF NOT EXISTS reservations (
         id SERIAL PRIMARY KEY,
-        client_id INT NOT NULL,
+        client_id VARCHAR(36) NOT NULL,
         number_of_passengers INT NOT NULL,
         number_of_cabinets INT NOT NULL,
         itinerary_id INT NOT NULL,
@@ -104,6 +105,7 @@ def initialize_reservations_table(database: Database):
     );
     """
     database.execute_query(create_table_query)
+    database.commit()
 
     logger.info("Reservations table initialized.")
 

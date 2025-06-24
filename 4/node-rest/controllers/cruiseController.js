@@ -2,16 +2,25 @@
  * Controlador para lidar com as operações relacionadas a cruzeiros.
  */
 const axios = require('axios'); // Importa o Axios para fazer requisições HTTP
-
+const { v4: uuidv4 } = require('uuid'); 
 // Carrega as variáveis de ambiente.
 // Garanta que `require('dotenv').config()` esteja no seu `app.js`
 // e que as variáveis PYTHON_BOOK_SVC_WEB_SERVER_HOST e PYTHON_BOOK_SVC_WEB_SERVER_PORT
 // estejam definidas no seu arquivo .env.
 const PYTHON_BOOK_SVC_URL = `http://${process.env.PYTHON_BOOK_SVC_WEB_SERVER_HOST || 'localhost'}:${process.env.PYTHON_BOOK_SVC_WEB_SERVER_PORT || 5001}`;
 
-// Simula um armazenamento de reservas. Em um sistema real, isso seria um banco de dados.
-// NOTA: mockReservations não será mais usado para cancelamento, mas ainda é usado para bookCruise
-const mockReservations = new Map();
+function getOrCreateClientId(req) {
+    // Tenta obter o client_id do cabeçalho 'X-Client-ID' enviado pelo frontend.
+    // Esta é a forma mais robusta de passar o ID do navegador para o seu backend Node.js.
+    let clientId = req.headers['x-client-id'];
+
+    if (!clientId) {
+        clientId = uuidv4();
+        console.warn(`Generated a new client_id: ${clientId}. In a real scenario, this would ideally come from the browser's localStorage.`);
+    }
+
+    return clientId;
+}
 
 /**
  * Função para buscar cruzeiros com base nos parâmetros fornecidos.
@@ -108,10 +117,12 @@ exports.bookCruise = async (req, res) => {
             return res.status(400).json({ error: 'Number of passengers and cabins must be greater than 0.' });
         }
 
+        const customer_id = getOrCreateClientId(req);
+        console.log(`Using client_id for booking: ${customer_id}`);
         // Payload que será enviado para o backend Python (book_svc /book/create-reservation)
         // Mapeando os nomes dos campos conforme o ReservationDTO do Python
         const payloadToPython = {
-            client_id: 0, // Mocked client_id as discussed for academic project
+            client_id: customer_id, // Mocked client_id as discussed for academic project
             num_of_passengers: num_passengers, // Alterado de 'passengers' para 'num_of_passengers'
             num_of_cabinets: num_cabins, // Alterado de 'num_cabins' para 'num_of_cabinets'
             itinerary_id: itinerary_id,
@@ -133,13 +144,6 @@ exports.bookCruise = async (req, res) => {
             console.error('Python Book Service returned unexpected data (missing reservation_id or payment_link):', pythonBookingResult);
             return res.status(500).json({ error: 'Failed to create reservation: Unexpected response from booking service.' });
         }
-
-        // Armazena a reserva localmente no Node.js (se necessário para cancelamento, etc.)
-        mockReservations.set(pythonBookingResult.reservation_id, {
-            ...pythonBookingResult,
-            status: 'pending_payment', // Status inicial, antes de interagir com o pagamento
-            timestamp: new Date().toISOString()
-        });
 
         // Envia a resposta de volta para o frontend
         res.status(200).json({
@@ -210,11 +214,6 @@ exports.cancelReservation = async (req, res) => {
         const pythonCancellationResult = response.data;
 
         if (pythonCancellationResult.status === "success") {
-            // Removemos a reserva do mock local se ela foi registrada lá, embora não seja mais a fonte principal
-            if (mockReservations.has(reservation_code)) {
-                mockReservations.delete(reservation_code);
-                console.log(`Reservation ${reservation_code} removed from local mock.`);
-            }
             res.status(200).json({ message: pythonCancellationResult.message });
         } else {
             // Caso o backend Python retorne um status de sucesso (200) mas com um status interno diferente de "success"

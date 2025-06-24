@@ -39,18 +39,34 @@ class Database:
             with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute(query, params)
 
-                # If query returns data (e.g., SELECT or INSERT ... RETURNING)
                 if cursor.description:
                     result = cursor.fetchall()
                     logger.debug(f"Query returned data: {cursor.rowcount} row(s).")
                     return result
-
-                self.connection.commit()
-                logger.debug(f"Query executed: {cursor.rowcount} row(s) affected.")
-                return cursor.rowcount
+                else:
+                    logger.debug(f"Query executed: {cursor.rowcount} row(s) affected (no data returned).")
+                    return cursor.rowcount
         except Exception as e:
             logger.error(f"Failed to execute query: {e}")
             self.connection.rollback()
+            raise
+
+    def commit(self):
+        """Commits the current transaction."""
+        try:
+            self.connection.commit()
+            logger.debug("Transaction committed.")
+        except Exception as e:
+            logger.error(f"Failed to commit transaction: {e}")
+            raise
+    
+    def rollback(self):
+        """Rolls back the current transaction."""
+        try:
+            self.connection.rollback()
+            logger.debug("Transaction rolled back.")
+        except Exception as e:
+            logger.error(f"Failed to roll back transaction: {e}")
             raise
 
     def execute_many(self, query: str, data: list):

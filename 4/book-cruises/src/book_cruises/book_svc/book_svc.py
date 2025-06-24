@@ -345,13 +345,21 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
                 jsonify({"status": "error", "message": "Reservation ID is required"}),
                 400,
             )
+        
+        def event_stream():
+            while True:
+                payment_status = book_svc.get_payment_status(reservation_id)
+                ticket_status = book_svc.get_ticket_status(reservation_id)
 
-        payment_status = book_svc.get_payment_status(reservation_id)
-        ticket_status = book_svc.get_ticket_status(reservation_id)
+                yield json.dumps({
+                    "payment_status": payment_status,
+                    "ticket_status": ticket_status
+                })
 
-        return (
-            jsonify({"payment_status": payment_status, "ticket_status": ticket_status}),
-            200,
+                time.sleep(5)
+
+        return Response(
+            stream_with_context(event_stream()), mimetype="text/event-stream"
         )
 
     @app.route("/book/cancel-reservation", methods=["DELETE"])

@@ -20,7 +20,7 @@ class ReservationRepository:
                 total_price
             )
             VALUES (
-                {reservation_dto.client_id},
+                '{reservation_dto.client_id}',
                 {reservation_dto.number_of_passengers},
                 {reservation_dto.number_of_cabinets},
                 {reservation_dto.itinerary_id},
@@ -37,13 +37,19 @@ class ReservationRepository:
                 ticket_status,
                 payment_status
         """
-        row = self.__database.execute_query(query)[0]
+        try:
+            row = self.__database.execute_query(query)[0]
+            self.__database.commit()
 
-        reservation = Reservation(**row)
+            reservation = Reservation(**row)
 
-        logger.debug(f"Reservation created with ID: '{reservation.id}'")
+            logger.debug(f"Reservation created with ID: '{reservation.id}'")
 
-        return reservation
+            return reservation
+        except Exception as e:
+            logger.error(f"Failed to create reservation: {e}")
+            self.__database.rollback()
+            raise
 
     def update_status(self, reservation_id: int, new_status: str) -> Reservation:
         query = f"""
@@ -64,10 +70,16 @@ class ReservationRepository:
                 ticket_status,
                 payment_status
         """
-        row = self.__database.execute_query(query)[0]
+        try:
+            row = self.__database.execute_query(query)[0]
+            self.__database.commit()
 
-        reservation = Reservation(**row)
+            reservation = Reservation(**row)
 
-        logger.debug(f"Reservation with ID '{reservation.id}' has been updated to -> '{new_status}'.")
+            logger.debug(f"Reservation with ID '{reservation.id}' has been updated to -> '{new_status}'.")
 
-        return reservation
+            return reservation
+        except Exception as e:
+            logger.error(f"Failed to update reservation status: {e}")
+            self.__database.rollback()
+            raise
