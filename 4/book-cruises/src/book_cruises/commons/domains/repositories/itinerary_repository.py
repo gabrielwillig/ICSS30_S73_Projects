@@ -20,7 +20,7 @@ class ItineraryRepository:
         results = self.__database.execute_query(query)
         if not results:
             return []
-
+        
         logger.debug(f"Results: '{results}'")
 
         # Map database rows to Itinerary domain objects
@@ -47,13 +47,15 @@ class ItineraryRepository:
         return itinerary
 
     def update_remaining_cabinets(
-        self, itinerary_id: int, requested_cabinets: int
+        self, itinerary_id: int, requested_cabinets: int, requested_passengers: int
     ) -> None:
         query = f"""
             UPDATE itineraries
             SET remaining_cabinets = remaining_cabinets - {requested_cabinets},
+                remaining_passengers = remaining_passengers - {requested_passengers},
                 updated_at = transaction_timestamp()
-            WHERE id = {itinerary_id} AND remaining_cabinets >= {requested_cabinets}
+            WHERE id = {itinerary_id} AND remaining_cabinets >= {requested_cabinets} AND
+                remaining_passengers >= {requested_passengers}
         """
         rows_affected = self.__database.execute_query(query)
 
@@ -65,3 +67,4 @@ class ItineraryRepository:
             logger.debug(
                 f"Successfully updated remaining cabinets for itinerary ID '{itinerary_id}'."
             )
+            self.__database.commit()

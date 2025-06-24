@@ -283,6 +283,165 @@ function openBookingModal(itineraryId) {
 function closeBookingModal() {
     bookingModal.style.display = 'none';
     currentBookingItineraryId = null;
+    
+    // Close any active SSE connections when modal closes
+    if (window.activeSSEConnections) {
+        window.activeSSEConnections.forEach(eventSource => {
+            if (eventSource.readyState !== EventSource.CLOSED) {
+                eventSource.close();
+                console.log('Closed SSE connection due to modal close');
+            }
+        });
+        window.activeSSEConnections = [];
+    }
+}
+
+/**
+ * Starts SSE monitoring for reservation status updates
+ * @param {string} reservation_id - The reservation ID to monitor
+ * @param {HTMLElement} targetArea - The area to display status updates
+ */
+function startReservationStatusMonitoring(reservation_id, targetArea) {
+    // Initialize global SSE connections array if not exists
+    if (!window.activeSSEConnections) {
+        window.activeSSEConnections = [];
+    }
+    
+    // Create initial status message
+    let statusMessageDiv = document.createElement('div');
+    statusMessageDiv.id = `status-${reservation_id}`;
+    statusMessageDiv.classList.add('mt-4', 'p-3', 'rounded-lg');
+    
+    // Set initial processing state
+    updateStatusMessage(statusMessageDiv, 'processing', 'Processing payment...', reservation_id);
+    targetArea.appendChild(statusMessageDiv);
+    
+    // Create SSE connection
+    const eventSource = new EventSource(`/api/reservation-status?reservation_id=${reservation_id}`);
+    
+    // Track this connection globally so it can be closed when modal closes
+    window.activeSSEConnections.push(eventSource);
+    
+    // Helper function to close and remove this connection from tracking
+    const closeAndRemoveConnection = () => {
+        eventSource.close();
+        if (window.activeSSEConnections) {
+            const index = window.activeSSEConnections.indexOf(eventSource);
+            if (index > -1) {
+                window.activeSSEConnections.splice(index, 1);
+            }
+        }
+    };
+    
+    eventSource.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            const paymentStatus = data.payment_status;
+            const ticketStatus = data.ticket_status;
+            
+            console.log('Received status update:', data);
+            
+            // Update based on payment status
+            if (paymentStatus.status === 'APPROVED') {
+                updateStatusMessage(statusMessageDiv, 'approved', 'Payment approved! Your booking is confirmed.', reservation_id);
+                // Close SSE connection after successful payment
+                closeAndRemoveConnection();
+            } else if (paymentStatus.status === 'REFUSED') {
+                updateStatusMessage(statusMessageDiv, 'refused', 'Payment refused. Please try again with a different payment method.', reservation_id);
+                // Close SSE connection after failed payment
+                closeAndRemoveConnection();
+            } else if (paymentStatus.status === 'PENDING') {
+                updateStatusMessage(statusMessageDiv, 'processing', 'Processing payment... Please wait.', reservation_id);
+            } else if (paymentStatus.status === 'error') {
+                updateStatusMessage(statusMessageDiv, 'error', 'Error checking payment status. Please contact support.', reservation_id);
+                closeAndRemoveConnection();
+            }
+            
+        } catch (error) {
+            console.error('Error parsing SSE data:', error);
+        }
+    };
+    
+    eventSource.onerror = function(event) {
+        console.error('SSE connection error:', event);
+        updateStatusMessage(statusMessageDiv, 'error', 'Connection error. Unable to check payment status.', reservation_id);
+        closeAndRemoveConnection();
+    };
+    
+    // Optional: Close connection after 5 minutes to prevent hanging connections
+    setTimeout(() => {
+        if (eventSource.readyState !== EventSource.CLOSED) {
+            updateStatusMessage(statusMessageDiv, 'timeout', 'Status monitoring timed out. Please refresh to check status.', reservation_id);
+            closeAndRemoveConnection();
+        }
+    }, 300000); // 5 minutes
+}
+
+/**
+ * Updates the status message with appropriate styling
+ * @param {HTMLElement} messageDiv - The div to update
+ * @param {string} status - Status type: 'processing', 'approved', 'refused', 'error', 'timeout'
+ * @param {string} message - The message to display
+ * @param {string} reservation_id - The reservation ID
+ */
+function updateStatusMessage(messageDiv, status, message, reservation_id) {
+    // Remove all existing status classes
+    messageDiv.classList.remove(
+        'bg-blue-100', 'text-blue-700', 'border-blue-200',
+        'bg-green-100', 'text-green-700', 'border-green-200',
+        'bg-red-100', 'text-red-700', 'border-red-200',
+        'bg-gray-100', 'text-gray-700', 'border-gray-200'
+    );
+    
+    // Add appropriate styling based on status
+    switch (status) {
+        case 'processing':
+            messageDiv.classList.add('bg-blue-100', 'text-blue-700', 'border-blue-200');
+            messageDiv.innerHTML = `
+                <div class="flex items-center">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-700 mr-2"></div>
+                    <span><strong>Reservation ${reservation_id}:</strong> ${message}</span>
+                </div>
+            `;
+            break;
+        case 'approved':
+            messageDiv.classList.add('bg-green-100', 'text-green-700', 'border-green-200');
+            messageDiv.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span><strong>Reservation ${reservation_id}:</strong> ${message}</span>
+                </div>
+            `;
+            break;
+        case 'refused':
+            messageDiv.classList.add('bg-red-100', 'text-red-700', 'border-red-200');
+            messageDiv.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span><strong>Reservation ${reservation_id}:</strong> ${message}</span>
+                </div>
+            `;
+            break;
+        case 'error':
+        case 'timeout':
+            messageDiv.classList.add('bg-gray-100', 'text-gray-700', 'border-gray-200');
+            messageDiv.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span><strong>Reservation ${reservation_id}:</strong> ${message}</span>
+                </div>
+            `;
+            break;
+    }
+    
+    // Add border styling
+    messageDiv.classList.add('border');
 }
 
 // --- Event Listeners ---
@@ -380,9 +539,10 @@ confirmBookingButton.addEventListener('click', async () => {
         const { message, reservation_id, payment_link } = response.data;
 
         // Display initial booking success message and payment link
-        showMessage(`${message} Reservation Code: <span class="font-semibold">${reservation_id}</span>. Payment Link: <a href="${payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
+        showMessage(`Reservation Code: <span class="font-semibold">${reservation_id}</span>. Payment Link: <a href="${payment_link}" target="_blank" class="text-blue-600 hover:underline">Click Here</a>`, 'success', bookingResultArea);
 
-        // Removed the call to startPollingReservationStatus(reservation_id); as requested.
+        // Start SSE connection to monitor reservation status
+        startReservationStatusMonitoring(reservation_id, bookingResultArea);
 
     } catch (error) {
         console.error('Error booking cruise:', error);
@@ -421,15 +581,14 @@ cancelReservationButton.addEventListener('click', async () => {
 
 // Event listeners for modal close button and clicking outside the modal
 closeButton.addEventListener('click', () => {
-    // When modal closes, stop any active polling for the current booking if it exists
-    if (currentBookingItineraryId) {
-        // The previous note still applies: currentBookingItineraryId doesn't directly map to reservation_code.
-        // But since polling is no longer initiated automatically here, this is less critical.
-    }
+    // When modal closes, any active SSE connections will be automatically closed
+    // by the closeBookingModal() function
     closeBookingModal();
 });
 window.addEventListener('click', (event) => {
     if (event.target === bookingModal) {
+        // When modal closes, any active SSE connections will be automatically closed
+        // by the closeBookingModal() function
         closeBookingModal();
     }
 });
