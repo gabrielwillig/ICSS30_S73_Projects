@@ -27,7 +27,7 @@ class ExternalPaymentSvc:
         # Simulate a delay to mimic real-world processing time
         time.sleep(PROCESSING_DELAY)
 
-        if random.choice([True, False]):
+        if random.choice([True]):
             payment.status = Payment.APPROVED
             logger.info("Payment approved")
         else:

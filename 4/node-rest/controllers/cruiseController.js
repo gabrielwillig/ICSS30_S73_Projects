@@ -2,16 +2,29 @@
  * Controlador para lidar com as operações relacionadas a cruzeiros.
  */
 const axios = require('axios'); // Importa o Axios para fazer requisições HTTP
-
+const { v4: uuidv4 } = require('uuid'); 
 // Carrega as variáveis de ambiente.
 // Garanta que `require('dotenv').config()` esteja no seu `app.js`
 // e que as variáveis PYTHON_BOOK_SVC_WEB_SERVER_HOST e PYTHON_BOOK_SVC_WEB_SERVER_PORT
 // estejam definidas no seu arquivo .env.
 const PYTHON_BOOK_SVC_URL = `http://${process.env.PYTHON_BOOK_SVC_WEB_SERVER_HOST || 'localhost'}:${process.env.PYTHON_BOOK_SVC_WEB_SERVER_PORT || 5001}`;
 
-// Simula um armazenamento de reservas. Em um sistema real, isso seria um banco de dados.
-// NOTA: mockReservations não será mais usado para cancelamento, mas ainda é usado para bookCruise
-const mockReservations = new Map();
+// Map to store active SSE connections from Node.js to the frontend for reservation status.
+// Used to close streams when clients disconnect.
+const activeReservationSSEConnections = new Map();
+
+function getOrCreateClientId(req) {
+    // Tenta obter o client_id do cabeçalho 'X-Client-ID' enviado pelo frontend.
+    // Esta é a forma mais robusta de passar o ID do navegador para o seu backend Node.js.
+    let clientId = req.headers['x-client-id'];
+
+    if (!clientId) {
+        clientId = uuidv4();
+        console.warn(`Generated a new client_id: ${clientId}. In a real scenario, this would ideally come from the browser's localStorage.`);
+    }
+
+    return clientId;
+}
 
 /**
  * Função para buscar cruzeiros com base nos parâmetros fornecidos.
@@ -55,15 +68,8 @@ exports.searchCruises = async (req, res) => {
         // O Python já fornece 'remaining_cabinets'.
         // Adicionamos 'remaining_passengers' mockado para o frontend.
         const itinerariesFromPython = response.data;
-        const augmentedItineraries = itinerariesFromPython.map(itinerary => ({
-            ...itinerary,
-            // Adiciona remaining_passengers mockado, já que não vem do backend Python
-            remaining_passengers: itinerary.remaining_cabinets * 3 // Exemplo: 1 a 20 passageiros
-            // remaining_cabinets já vem do Python, então não precisamos adicionar mock aqui.
-            // A validação de remaining_cabinets > 0 será feita no front-end ou no serviço de itinerários Python
-        }));
-
-        res.status(response.status).json(augmentedItineraries);
+        console.log(response);
+        res.status(response.status).json(itinerariesFromPython);
 
     } catch (error) {
         console.error(`Error in searchCruises when calling Python backend: ${error.message}`);
@@ -108,10 +114,12 @@ exports.bookCruise = async (req, res) => {
             return res.status(400).json({ error: 'Number of passengers and cabins must be greater than 0.' });
         }
 
+        const customer_id = getOrCreateClientId(req);
+        console.log(`Using client_id for booking: ${customer_id}`);
         // Payload que será enviado para o backend Python (book_svc /book/create-reservation)
         // Mapeando os nomes dos campos conforme o ReservationDTO do Python
         const payloadToPython = {
-            client_id: 0, // Mocked client_id as discussed for academic project
+            client_id: customer_id, // Mocked client_id as discussed for academic project
             num_of_passengers: num_passengers, // Alterado de 'passengers' para 'num_of_passengers'
             num_of_cabinets: num_cabins, // Alterado de 'num_cabins' para 'num_of_cabinets'
             itinerary_id: itinerary_id,
@@ -133,13 +141,6 @@ exports.bookCruise = async (req, res) => {
             console.error('Python Book Service returned unexpected data (missing reservation_id or payment_link):', pythonBookingResult);
             return res.status(500).json({ error: 'Failed to create reservation: Unexpected response from booking service.' });
         }
-
-        // Armazena a reserva localmente no Node.js (se necessário para cancelamento, etc.)
-        mockReservations.set(pythonBookingResult.reservation_id, {
-            ...pythonBookingResult,
-            status: 'pending_payment', // Status inicial, antes de interagir com o pagamento
-            timestamp: new Date().toISOString()
-        });
 
         // Envia a resposta de volta para o frontend
         res.status(200).json({
@@ -210,11 +211,6 @@ exports.cancelReservation = async (req, res) => {
         const pythonCancellationResult = response.data;
 
         if (pythonCancellationResult.status === "success") {
-            // Removemos a reserva do mock local se ela foi registrada lá, embora não seja mais a fonte principal
-            if (mockReservations.has(reservation_code)) {
-                mockReservations.delete(reservation_code);
-                console.log(`Reservation ${reservation_code} removed from local mock.`);
-            }
             res.status(200).json({ message: pythonCancellationResult.message });
         } else {
             // Caso o backend Python retorne um status de sucesso (200) mas com um status interno diferente de "success"
@@ -283,5 +279,110 @@ exports.getReservationStatus = async (req, res) => {
             console.error('Error setting up request to Python backend:', error.message);
             res.status(500).json({ error: 'Internal server error while setting up reservation status check.' });
         }
+    }
+};
+
+/**
+ * Handles Server-Sent Events (SSE) for reservation status monitoring.
+ * Proxies the SSE connection to the Python Book Service.
+ *
+ * @param {object} req - Express request object.
+ * @param {object} res - Express response object.
+ */
+exports.getReservationStatusSSE = async (req, res) => {
+    const { reservation_id } = req.query;
+
+    if (!reservation_id) {
+        console.error('Error 400: Reservation ID is required for SSE status check.');
+        return res.status(400).json({ error: 'Reservation ID is required.' });
+    }
+
+    console.log(`Starting SSE proxy for reservation ID: ${reservation_id}`);
+
+    // If there's already an active SSE connection for this reservation_id, close the old one
+    if (activeReservationSSEConnections.has(reservation_id)) {
+        console.log(`Existing SSE connection for reservation ${reservation_id} found. Closing old connection.`);
+        const oldConnection = activeReservationSSEConnections.get(reservation_id);
+        if (oldConnection.pythonStream) {
+            oldConnection.pythonStream.destroy();
+        }
+        oldConnection.res.end();
+        activeReservationSSEConnections.delete(reservation_id);
+    }
+
+    // Set SSE headers
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    try {
+        // Create axios request to Python backend SSE endpoint
+        const response = await axios.get(`${PYTHON_BOOK_SVC_URL}/book/reservation-status`, {
+            params: { reservation_id: parseInt(reservation_id, 10) },
+            responseType: 'stream',
+            timeout: 0 // No timeout for SSE
+        });
+
+        const pythonStream = response.data;
+
+        // Store the connection in our tracking map
+        activeReservationSSEConnections.set(reservation_id, {
+            res: res,
+            pythonStream: pythonStream
+        });
+
+        console.log(`SSE connection established from Node.js to frontend for reservation ${reservation_id}.`);
+
+        // Forward the stream from Python to the frontend
+        pythonStream.on('data', (chunk) => {
+            const dataString = chunk.toString().trim();
+            if (dataString) {
+                // Ensure proper SSE formatting
+                const formattedEvent = `data: ${dataString}\n\n`;
+                console.log(`Forwarding SSE event to frontend for reservation ${reservation_id}:`, formattedEvent);
+                res.write(formattedEvent);
+            }
+        });
+
+        pythonStream.on('end', () => {
+            console.log(`Python reservation status stream ended for reservation ${reservation_id}`);
+            res.end();
+            activeReservationSSEConnections.delete(reservation_id);
+        });
+
+        pythonStream.on('error', (error) => {
+            console.error(`Error in Python reservation status stream for reservation ${reservation_id}:`, error);
+            // Check if headers have already been sent to avoid "ERR_STREAM_WRITE_AFTER_END"
+            if (!res.headersSent) {
+                res.status(500).end('Error receiving reservation status from Python backend.');
+            } else {
+                res.end();
+            }
+            activeReservationSSEConnections.delete(reservation_id);
+        });
+
+        // Handle client disconnect - CRITICAL for stopping Python backend from continuing to send data
+        req.on('close', () => {
+            console.log(`Frontend client disconnected from SSE for reservation ${reservation_id}. Ending Python stream.`);
+            // IMPORTANT: If the frontend client disconnects, we must destroy the stream to Python
+            // so that Python can clean up its queue and free resources.
+            pythonStream.destroy();
+            activeReservationSSEConnections.delete(reservation_id);
+        });
+
+    } catch (error) {
+        console.error(`Error setting up SSE proxy for reservation ${reservation_id}:`, error.message);
+        if (error.response) {
+            console.error('Python Backend Stream Error Data:', error.response.data);
+            console.error('Python Backend Stream Status:', error.response.status);
+            res.status(error.response.status).end(error.response.data.message || 'Error connecting to Python reservation status stream.');
+        } else {
+            res.status(500).end('Internal server error or Python stream unavailable.');
+        }
+        activeReservationSSEConnections.delete(reservation_id);
     }
 };

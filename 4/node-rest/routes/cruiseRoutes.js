@@ -213,6 +213,39 @@ router.post('/book-cruise', cruiseController.bookCruise);
 // Define the POST route for '/cancel-reservation' and associate it with the cancelReservation method of the controller.
 router.post('/cancel-reservation', cruiseController.cancelReservation);
 
+/**
+ * @swagger
+ * /api/reservation-status:
+ * get:
+ * summary: Server-Sent Events (SSE) endpoint for real-time reservation status updates.
+ * description: Establishes an SSE connection to receive real-time updates about payment and ticket status for a reservation.
+ * parameters:
+ * - in: query
+ * name: reservation_id
+ * schema:
+ * type: string
+ * required: true
+ * description: The unique reservation ID to monitor.
+ * responses:
+ * 200:
+ * description: SSE stream with reservation status updates.
+ * content:
+ * text/event-stream:
+ * schema:
+ * type: string
+ * 400:
+ * description: Missing reservation ID.
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * properties:
+ * error:
+ * type: string
+ */
+// Define the GET route for '/reservation-status' SSE endpoint
+router.get('/reservation-status', cruiseController.getReservationStatusSSE);
+
 
 // Export the router to be used in app.js.
 module.exports = router;

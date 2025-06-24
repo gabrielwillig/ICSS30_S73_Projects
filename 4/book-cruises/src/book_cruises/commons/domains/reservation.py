@@ -11,7 +11,7 @@ class Reservation(BaseModel):
     PENDING: ClassVar[str] = "PENDING"
 
     id: int = Field(description="Unique identifier for the reservation")
-    client_id: int = Field(description="Unique identifier for the client")
+    client_id: str = Field(description="Unique identifier for the client")
     number_of_passengers: int = Field(
         description="Number of passengers included in the reservation"
     )
@@ -45,7 +45,7 @@ class Reservation(BaseModel):
 
 
 class ReservationDTO(BaseModel):
-    client_id: int = Field(description="Unique identifier for the client")
+    client_id: str = Field(description="Unique identifier for the client")
     number_of_passengers: int = Field(
         description="Number of passengers included in the reservation"
     )

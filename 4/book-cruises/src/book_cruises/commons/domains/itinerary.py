@@ -24,6 +24,9 @@ class Itinerary(BaseModel):
     remaining_cabinets: int = Field(
         description="Remaining seats available for the itinerary"
     )
+    remaining_passengers: int = Field(
+        description="Remaining passengers available for the itinerary"
+    )
     price: float = Field(description="Price of the itinerary")
 
     def __init__(self, **data):

@@ -120,10 +120,17 @@ class BookSvc:
         Cancels a reservation by its ID.
         This method updates the reservation status to 'cancelled' and notifies the user.
         """
-        logger.error(self.__cached_reservations)
         if reservation_id not in self.__cached_reservations:
             logger.error(f"Reservation ID {reservation_id} not found.")
             return
+        if self.__cached_reservations[reservation_id].payment_status == Payment.APPROVED:
+            num_cabinets_to_update = -1*self.__cached_reservations[reservation_id].number_of_cabinets
+            num_passengers_to_update = -1*self.__cached_reservations[reservation_id].number_of_passengers
+            self.__itinerary_repository.update_remaining_cabinets(
+                self.__cached_reservations[reservation_id].itinerary_id,
+                num_cabinets_to_update,
+                num_passengers_to_update,
+            )
         self.__reservation_repository.update_status(reservation_id, Reservation.CANCELLED)
         self.__cached_reservations[reservation_id].reservation_status = Reservation.CANCELLED
 
@@ -155,55 +162,76 @@ class BookSvc:
             logger.warning(f"No promotion queue found for client '{client_id}'")
 
     def __add_new_reservation(self, reservation: Reservation) -> None:
-        self.__cached_reservations[reservation.id] = reservation
-        logger.info(f"Added new reservation: {reservation.id}")
+        # Store with string key for consistent access
+        reservation_key = str(reservation.id)
+        self.__cached_reservations[reservation_key] = reservation
+        logger.info(f"Added new reservation: {reservation_key}")
         logger.debug(
             f"Cached reservations: {self.__cached_reservations.keys()}"
         )
 
     def __update_reservation_payment_status(self, payment: Payment) -> None:
-        if not payment.reservation_id in self.__cached_reservations:
+        # Convert to string for consistent cache access
+        reservation_key = str(payment.reservation_id)
+        if not reservation_key in self.__cached_reservations:
             logger.error(
-                f"Reservation ID '{payment.reservation_id}' not found in cached reservations: {self.__cached_reservations.keys()}"
+                f"Reservation ID '{reservation_key}' not found in cached reservations: {self.__cached_reservations.keys()}"
             )
             return
-        self.__cached_reservations[payment.reservation_id].payment_status = (
+        self.__cached_reservations[reservation_key].payment_status = (
             payment.status
         )
         logger.debug(
-            f"Update payment status with reservation_id '{payment.reservation_id}' -> '{payment.status}'"
+            f"Update payment status with reservation_id '{reservation_key}' -> '{payment.status}'"
         )
 
     def __update_reservation_ticket_status(
         self, reservation_id: str, ticket: Ticket
     ) -> None:
-        self.__cached_reservations[reservation_id].ticket_status = ticket.status
+        # Ensure string key for cache access
+        reservation_key = str(reservation_id)
+        if reservation_key not in self.__cached_reservations:
+            logger.error(
+                f"Reservation ID '{reservation_key}' not found in cached reservations: {self.__cached_reservations.keys()}"
+            )
+            return
+        self.__cached_reservations[reservation_key].ticket_status = ticket.status
         logger.info(
-            f"Update ticket status with reservation_id '{reservation_id}' -> '{ticket.status}'"
+            f"Update ticket status with reservation_id '{reservation_key}' -> '{ticket.status}'"
         )
 
     def __process_ticket(self, ticket_data: dict) -> None:
         ticket: Ticket = Ticket(**ticket_data)
-        self.__update_reservation_ticket_status(ticket.payment.reservation_id, ticket)
+        # Convert to string for consistency
+        reservation_id_str = str(ticket.payment.reservation_id)
+        self.__update_reservation_ticket_status(reservation_id_str, ticket)
 
     def __process_payment(self, payment_data: dict) -> None:
         payment: Payment = Payment(**payment_data)
-
+        if self.__cached_reservations.get(str(payment.reservation_id)) is None:
+            logger.error(
+                f"Reservation ID '{payment.reservation_id}' not found in cached reservations: {self.__cached_reservations.keys()}"
+            )
+            return
         match payment.status:
             case Payment.APPROVED:
                 self.__update_reservation_payment_status(payment)
+                reservation_key = str(payment.reservation_id)
                 num_cabinets_to_update = self.__cached_reservations[
-                    payment.reservation_id
+                    reservation_key
                 ].number_of_cabinets
+                num_passengers_to_update = self.__cached_reservations[
+                    reservation_key
+                ].number_of_passengers
                 self.__reservation_repository.update_status(
                     payment.reservation_id, Reservation.APPROVED
                 )
                 self.__itinerary_repository.update_remaining_cabinets(
-                    payment.itinerary_id, num_cabinets_to_update
+                    payment.itinerary_id, num_cabinets_to_update, num_passengers_to_update
                 )
             case Payment.REFUSED:
                 self.__update_reservation_payment_status(payment)
-                self.cancel_reservation(payment.reservation_id)
+                self.cancel_reservation(str(payment.reservation_id))
             case _:
                 logger.error(f"Unknown status: '{payment.status}'")
 
@@ -290,6 +318,7 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
             json=itinerary_data,
             timeout=config.REQUEST_TIMEOUT,
         )
+        logger.debug(f"Itinerary service response: {response.json()}")
 
         return jsonify(response.json()), response.status_code
 
@@ -345,13 +374,29 @@ def create_flask_app(book_svc: BookSvc) -> Flask:
                 jsonify({"status": "error", "message": "Reservation ID is required"}),
                 400,
             )
+        
+        # Convert to string for cache lookup
+        reservation_id_str = str(reservation_id)
+        
+        def event_stream():
+            while True:
+                try:
+                    payment_status = book_svc.get_payment_status(reservation_id_str)
+                    ticket_status = book_svc.get_ticket_status(reservation_id_str)
+                    logger.info(
+                        f"Payment status for reservation {reservation_id_str}: {payment_status}")
+                    yield json.dumps({
+                        "payment_status": payment_status,
+                        "ticket_status": ticket_status
+                    })
 
-        payment_status = book_svc.get_payment_status(reservation_id)
-        ticket_status = book_svc.get_ticket_status(reservation_id)
+                    time.sleep(5)
+                except GeneratorExit:
+                    logger.info(f"Client disconnected from reservation status stream for {reservation_id_str}")
+                    break
 
-        return (
-            jsonify({"payment_status": payment_status, "ticket_status": ticket_status}),
-            200,
+        return Response(
+            stream_with_context(event_stream()), mimetype="text/event-stream"
         )
 
     @app.route("/book/cancel-reservation", methods=["DELETE"])

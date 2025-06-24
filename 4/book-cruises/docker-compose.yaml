@@ -108,6 +108,8 @@ services:
     depends_on:
       book-svc:
         condition: service_healthy
+    ports:
+      - "5002:5002"
     env_file:
       - .env
     command: >
@@ -190,6 +192,8 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    ports:
+      - "5003:5003"
     command: >
       sh -c " uv run external-payment-svc; "
     volumes:

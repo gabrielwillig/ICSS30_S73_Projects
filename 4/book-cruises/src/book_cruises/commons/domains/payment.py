@@ -21,7 +21,7 @@ class Payment(BaseModel):
     itinerary_id: int = Field(
         description="Identifier for the itinerary associated with this payment"
     )
-    client_id: int = Field(
+    client_id: str = Field(
         description="Unique identifier for the client making the payment"
     )
 
@@ -29,7 +29,7 @@ class Payment(BaseModel):
     def create_payment(
         reservation_id: int,
         itinerary_id: int,
-        client_id: int,
+        client_id: str,
         total_price: float,
         currency: Optional[str] = "USD",
     ) -> "Payment":
