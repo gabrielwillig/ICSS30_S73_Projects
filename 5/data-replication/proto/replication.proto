@@ -1,0 +1,45 @@
+// --- proto/replication.proto ---
+
+syntax = "proto3";
+
+package replication;
+
+service Leader {
+  rpc Write(WriteRequest) returns (WriteResponse);
+  rpc Read(ReadRequest) returns (ReadResponse);
+}
+
+service Replica {
+  rpc ReplicateLog(LogEntry) returns (Ack);
+  rpc Commit(CommitRequest) returns (Ack);
+}
+
+message WriteRequest {
+  string data = 1;
+}
+
+message WriteResponse {
+  string status = 1;
+}
+
+message ReadRequest {}
+
+message ReadResponse {
+  repeated LogEntry entries = 1;
+}
+
+message LogEntry {
+  int32 epoch = 1;
+  int32 offset = 2;
+  string data = 3;
+}
+
+message CommitRequest {
+  int32 epoch = 1;
+  int32 offset = 2;
+}
+
+message Ack {
+  bool success = 1;
+  string message = 2;
+}
