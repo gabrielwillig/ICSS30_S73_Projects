@@ -1,0 +1,16 @@
+services:
+  data-replication:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name:  data-replication
+    volumes:
+      - ./data-replication:/data-replication
+    working_dir: /data-replication
+    environment:
+      - GO111MODULE=on
+      - GOCACHE=/tmp/.cache
+    command: ["/bin/bash"]
+    stdin_open: true
+    tty: true
+    user: "1000:1000"
