@@ -4,6 +4,8 @@ syntax = "proto3";
 
 package replication;
 
+option go_package = "data-replication/pb;pb";
+
 service Leader {
   rpc Write(WriteRequest) returns (WriteResponse);
   rpc Read(ReadRequest) returns (ReadResponse);
@@ -32,6 +34,7 @@ message LogEntry {
   int32 epoch = 1;
   int32 offset = 2;
   string data = 3;
+  bool committed = 4;
 }
 
 message CommitRequest {
