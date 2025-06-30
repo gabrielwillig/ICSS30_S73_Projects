@@ -15,14 +15,17 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
 protoc -I=proto --go_out=pb --go_opt=paths=source_relative --go-grpc_out=pb --go-grpc_opt=paths=source_relative  proto/replication.proto
 
 # Run
+Start in the following order:
 
-## client
-go run ./client/
+## leader
+go run ./leader/
 
 ## replicas
 go run ./replica/ 1
 go run ./replica/ 2
 go run ./replica/ 3
 
-## leader
-go run ./leader/
+## client
+The client just send "Hello" message and exit. For testing purposes is ok but will be an upgrade make the client alway active and receiving data to write from terminal
+
+go run ./client/
