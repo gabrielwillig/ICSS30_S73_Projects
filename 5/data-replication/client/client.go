@@ -6,13 +6,14 @@ import (
 	"log"
 	"time"
 
-	pb "data-replication/pb"
+	"data-replication/pb"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-	conn, _ := grpc.NewClient("localhost:50051", grpc.WithInsecure())
+	conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	client := pb.NewLeaderClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

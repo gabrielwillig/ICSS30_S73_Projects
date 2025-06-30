@@ -24,7 +24,9 @@ message WriteResponse {
   string status = 1;
 }
 
-message ReadRequest {}
+message ReadRequest {
+  int32 offset = 1;
+}
 
 message ReadResponse {
   repeated LogEntry entries = 1;
