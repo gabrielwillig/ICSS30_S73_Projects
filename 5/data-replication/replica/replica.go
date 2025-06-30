@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
+	"strconv"
 
 	"data-replication/pb"
 
@@ -22,36 +24,50 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 	log.Println("Received log entry:", entry)
 
 	if int(entry.Epoch) < r.epoch {
+		log.Println("Received stale epoch, ignoring entry")
 		return &pb.Ack{Success: false, Message: "stale epoch"}, nil
 	}
 
 	// Handle uncommitted entries
 	if len(r.log) > 0 && !r.log[len(r.log)-1].Committed {
-		log.Println("Uncommitted logs detected, truncating and syncing with leader")
+		log.Println("Uncommitted logs detected")
+
+		var lastCommitedEntry int32
 
 		for i := len(r.log) - 1; i >= 0; i-- {
 			if r.log[i].Committed {
 				r.log = r.log[:i+1]
 				log.Printf("Truncated log to last committed entry at offset %d", i)
+				lastCommitedEntry = r.log[i].Offset
 				break
 			}
 		}
 
-		log.Printf("Syncing log with leader async, expected offset %d, got %d", len(r.log), entry.Offset)
-		r.startBackgroundSync(entry.Offset)
+		if entry.Offset != lastCommitedEntry+1 {
+			offsetToRequest := lastCommitedEntry + 1
+			r.startBackgroundSync(offsetToRequest)
+		}
+
 		return &pb.Ack{Success: false, Message: "sync started"}, nil
 	}
 
 	// Handle offset mismatch (conflict)
 	if int(entry.Offset) != len(r.log) {
-		log.Printf("Conflict detected: expected offset %d, got %d", len(r.log), entry.Offset)
+		log.Printf("Conflict detected: Expected offset %d, got %d", len(r.log), entry.Offset)
 
 		if int(entry.Offset) < len(r.log) {
-			log.Printf("Truncating log to offset %d", entry.Offset)
+			// If the replica is ahead the leader's log, truncate the replica log
+			log.Printf("Replica log is ahead of leader's log")
+
 			r.log = r.log[:entry.Offset]
+			log.Printf("Truncated log to offset %d", entry.Offset)
 		} else {
-			log.Printf("Syncing log with leader async, expected offset %d, got %d", len(r.log), entry.Offset)
-			r.startBackgroundSync(entry.Offset)
+			// If the replica's log is behind the leader's log, start a background sync
+			log.Printf("Replica log is behind leader's log")
+
+			offsetToRequest := int32(len(r.log))
+			r.startBackgroundSync(offsetToRequest)
+
 			return &pb.Ack{Success: false, Message: "sync started"}, nil
 		}
 	}
@@ -59,6 +75,7 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 	// Accept log entry
 	r.epoch = int(entry.Epoch)
 	r.log = append(r.log, entry)
+	log.Printf("Saved intermediary log entry: %+v", entry)
 
 	return &pb.Ack{Success: true, Message: "ok"}, nil
 }
@@ -66,9 +83,11 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 func (r *ReplicaServer) Commit(ctx context.Context, commit *pb.CommitRequest) (*pb.Ack, error) {
 	if int(commit.Offset) < len(r.log) {
 		r.log[commit.Offset].Committed = true
+		log.Printf("Committed entry at offset %d: %+v", commit.Offset, r.log[commit.Offset])
 		return &pb.Ack{Success: true, Message: "committed"}, nil
 	}
 
+	log.Printf("Commit failed: Offset %d not found in log", commit.Offset)
 	return &pb.Ack{Success: false, Message: "not found"}, nil
 }
 
@@ -86,6 +105,7 @@ func (r *ReplicaServer) syncWithLeader(ctx context.Context, fromOffset int32) er
 		log.Printf("Synced log entry from leader: %v", entry)
 	}
 
+	log.Printf("Synced %d entries from leader starting at offset %d", len(resp.Entries), fromOffset)
 	return nil
 }
 
@@ -101,17 +121,30 @@ func (r *ReplicaServer) startBackgroundSync(offset int32) {
 }
 
 func main() {
-	leaderAddr := "localhost:50051" // change to actual leader address
+	if len(os.Args) < 2 {
+		log.Fatalf("Usage: %s <replica_number>", os.Args[0])
+	}
+	replicaNum, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalf("Invalid replica number: %v", err)
+	}
+	port := 50051 + replicaNum
+	addr := ":" + strconv.Itoa(port)
+
+	// Connect to the leader
+	leaderAddr := "localhost:50051"
 	conn, err := grpc.NewClient(leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to leader: %v", err)
 	}
 	leader := pb.NewLeaderClient(conn)
 
-	lis, _ := net.Listen("tcp", ":50052") // change port per instance
-
 	grpcServer := grpc.NewServer()
 	replica := &ReplicaServer{leaderClient: leader}
 	pb.RegisterReplicaServer(grpcServer, replica)
+
+	lis, _ := net.Listen("tcp", addr)
+	log.Printf("Replica %d listening on %s", replicaNum, addr)
+
 	log.Fatal(grpcServer.Serve(lis))
 }

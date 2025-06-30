@@ -13,7 +13,7 @@ import (
 )
 
 // Quorum constant
-const QUORUM = 1
+const QUORUM = 2
 
 type LeaderServer struct {
 	pb.UnimplementedLeaderServer
@@ -62,7 +62,7 @@ func (l *LeaderServer) replicateToQuorum(ctx context.Context, entry *pb.LogEntry
 	var acks int
 	var ackMu sync.Mutex
 
-	for _, replica := range l.replicas {
+	for replicaNum, replica := range l.replicas {
 		wg.Add(1)
 		go func(r pb.ReplicaClient) {
 			defer wg.Done()
@@ -71,9 +71,9 @@ func (l *LeaderServer) replicateToQuorum(ctx context.Context, entry *pb.LogEntry
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-				log.Printf("✅ Replicated to %v | Entry: %v", r, entry)
+				log.Printf("✅ Successful requested replication | Replica: %v | Entry: %v", replicaNum, entry)
 			} else {
-				log.Printf("❌ Failed to replicate to %v | Err: %v | Entry: %v", r, err, entry)
+				log.Printf("❌ Failed requesting replication | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
 			}
 		}(replica)
 	}
@@ -87,7 +87,7 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 	var acks int
 	var ackMu sync.Mutex
 
-	for _, replica := range l.replicas {
+	for replicaNum, replica := range l.replicas {
 		wg.Add(1)
 		go func(r pb.ReplicaClient) {
 			defer wg.Done()
@@ -99,9 +99,9 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-				log.Printf("✅ Committed on %v | Entry: %v", r, entry)
+				log.Printf("✅ Successful committed | Replica: %v | Entry: %v", replicaNum, entry)
 			} else {
-				log.Printf("❌ Failed to commit on %v | Err: %v | Entry: %v", r, err, entry)
+				log.Printf("❌ Failed to commit | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
 			}
 		}(replica)
 	}
@@ -113,12 +113,14 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 // Read only committed entries and sends them back to the client
 func (l *LeaderServer) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadResponse, error) {
 	var committed []*pb.LogEntry
-	for i := range l.log {
+
+	for i := int(req.Offset); i < len(l.log); i++ {
 		e := l.log[i]
 		if e.Committed {
 			committed = append(committed, e)
 		}
 	}
+
 	return &pb.ReadResponse{Entries: committed}, nil
 }
 
@@ -126,8 +128,8 @@ func main() {
 	// List of replica addresses (update as needed)
 	replicaAddrs := []string{
 		"localhost:50052",
-		// "localhost:50053",
-		// "localhost:50054",
+		"localhost:50053",
+		"localhost:50054",
 	}
 	var replicas []pb.ReplicaClient
 	for _, addr := range replicaAddrs {
