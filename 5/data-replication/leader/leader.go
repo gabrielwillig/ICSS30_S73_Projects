@@ -37,60 +37,77 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 	}
 	l.log = append(l.log, entry)
 
+	acks := l.replicateToQuorum(ctx, entry)
+	if acks < QUORUM {
+		log.Printf("Failed to achieve replication quorum: %d/%d", acks, QUORUM)
+		l.log = l.log[:len(l.log)-1]
+		return &pb.WriteResponse{Status: "failed quorum"}, nil
+	}
+
+	commitAcks := l.commitToQuorum(ctx, entry)
+	if commitAcks < QUORUM {
+		log.Printf("Failed to achieve commit quorum: %d/%d", commitAcks, QUORUM)
+		l.log = l.log[:len(l.log)-1]
+		return &pb.WriteResponse{Status: "failed quorum"}, nil
+	}
+
+	l.log[entry.Offset].Committed = true
+	log.Printf("Committed entry: %+v", entry)
+
+	return &pb.WriteResponse{Status: "committed"}, nil
+}
+
+func (l *LeaderServer) replicateToQuorum(ctx context.Context, entry *pb.LogEntry) int {
 	var wg sync.WaitGroup
-	acks := 0
-	ackMu := sync.Mutex{}
+	var acks int
+	var ackMu sync.Mutex
 
 	for _, replica := range l.replicas {
 		wg.Add(1)
 		go func(r pb.ReplicaClient) {
 			defer wg.Done()
 			ack, err := r.ReplicateLog(ctx, entry)
-			// Log the replication attempt
 			if err == nil && ack.Success {
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-
-				log.Printf("Success replication request \n Replica: %v \n Entry: %v", replica, entry)
+				log.Printf("✅ Replicated to %v | Entry: %v", r, entry)
 			} else {
-				log.Printf("Fail replication request \n Replica %v: \n Err: %v \n Entry: %v", replica, err, entry)
+				log.Printf("❌ Failed to replicate to %v | Err: %v | Entry: %v", r, err, entry)
 			}
 		}(replica)
 	}
+
 	wg.Wait()
+	return acks
+}
 
-	if acks < QUORUM {
-		log.Printf("Failed to achieve replication request quorum: %d acks received, %d required", acks, QUORUM)
-		l.log = l.log[:len(l.log)-1]
-		return &pb.WriteResponse{Status: "failed quorum"}, nil
-	}
-
-	commitAcks := 0
+func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) int {
+	var wg sync.WaitGroup
+	var acks int
+	var ackMu sync.Mutex
 
 	for _, replica := range l.replicas {
-		ack, err := replica.Commit(ctx, &pb.CommitRequest{
-			Epoch:  entry.Epoch,
-			Offset: entry.Offset,
-		})
-
-		if err == nil && ack.Success {
-			commitAcks++
-			log.Printf("Success commit request \n Replica: %v \n Entry: %v", replica, entry)
-		} else {
-			log.Printf("Fail commit request \n Replica %v: \n Err: %v \n Entry: %v", replica, err, entry)
-		}
+		wg.Add(1)
+		go func(r pb.ReplicaClient) {
+			defer wg.Done()
+			ack, err := r.Commit(ctx, &pb.CommitRequest{
+				Epoch:  entry.Epoch,
+				Offset: entry.Offset,
+			})
+			if err == nil && ack.Success {
+				ackMu.Lock()
+				acks++
+				ackMu.Unlock()
+				log.Printf("✅ Committed on %v | Entry: %v", r, entry)
+			} else {
+				log.Printf("❌ Failed to commit on %v | Err: %v | Entry: %v", r, err, entry)
+			}
+		}(replica)
 	}
 
-	if commitAcks < QUORUM {
-		log.Printf("Failed to achieve commit quorum: %d acks received, %d required", commitAcks, QUORUM)
-		l.log = l.log[:len(l.log)-1]
-		return &pb.WriteResponse{Status: "failed quorum"}, nil
-	}
-
-	l.log[entry.Offset].Committed = true
-	log.Printf("Committed \n Entry: %v", entry)
-	return &pb.WriteResponse{Status: "committed"}, nil
+	wg.Wait()
+	return acks
 }
 
 // Read only committed entries and sends them back to the client
