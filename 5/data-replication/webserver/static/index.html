@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Folder Viewer</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { font-family: sans-serif; background: #222; color: #eee; }
+    #grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1em; }
+    .quadrant { background: #333; padding: 1em; border-radius: 8px; overflow-y: auto; height: 300px; }
+    .qtitle { font-weight: bold; margin-bottom: 0.5em; }
+    pre { background: #222; color: #bfb; padding: 0.5em; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Data Folder Viewer</h1>
+  <div id="grid">
+    <div class="quadrant" id="leader">
+      <div class="qtitle">Leader</div>
+      <div class="qcontent" id="leader-content"></div>
+    </div>
+    <div class="quadrant" id="replica1">
+      <div class="qtitle">Replica 1</div>
+      <div class="qcontent" id="replica1-content"></div>
+    </div>
+    <div class="quadrant" id="replica2">
+      <div class="qtitle">Replica 2</div>
+      <div class="qcontent" id="replica2-content"></div>
+    </div>
+    <div class="quadrant" id="replica3">
+      <div class="qtitle">Replica 3</div>
+      <div class="qcontent" id="replica3-content"></div>
+    </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
