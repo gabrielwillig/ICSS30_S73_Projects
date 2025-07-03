@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net"
+	"os"
 	"sync"
 
 	"data-replication/pb"
@@ -36,11 +38,13 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 		Committed: false,
 	}
 	l.log = append(l.log, entry)
+	l.persistLogs()
 
 	acks := l.replicateToQuorum(ctx, entry)
 	if acks < QUORUM {
 		log.Printf("Failed to achieve replication quorum: %d/%d", acks, QUORUM)
 		l.log = l.log[:len(l.log)-1]
+		l.persistLogs()
 		return &pb.WriteResponse{Status: "failed quorum"}, nil
 	}
 
@@ -48,10 +52,12 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 	if commitAcks < QUORUM {
 		log.Printf("Failed to achieve commit quorum: %d/%d", commitAcks, QUORUM)
 		l.log = l.log[:len(l.log)-1]
+		l.persistLogs()
 		return &pb.WriteResponse{Status: "failed quorum"}, nil
 	}
 
 	l.log[entry.Offset].Committed = true
+	l.persistLogs()
 	log.Printf("Committed entry: %+v", entry)
 
 	return &pb.WriteResponse{Status: "committed"}, nil
@@ -124,6 +130,47 @@ func (l *LeaderServer) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadR
 	return &pb.ReadResponse{Entries: committed}, nil
 }
 
+func saveLeaderLogToFile(filename string, logEntries []*pb.LogEntry) error {
+	data, err := json.MarshalIndent(logEntries, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, data, 0644)
+}
+
+func loadLeaderLogFromFile(filename string) ([]*pb.LogEntry, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var logEntries []*pb.LogEntry
+	if err := json.Unmarshal(data, &logEntries); err != nil {
+		return nil, err
+	}
+	return logEntries, nil
+}
+
+func (l *LeaderServer) persistLogs() {
+	var committed, uncommitted []*pb.LogEntry
+	for _, entry := range l.log {
+		if entry.Committed {
+			committed = append(committed, entry)
+		} else {
+			uncommitted = append(uncommitted, entry)
+		}
+	}
+	_ = os.MkdirAll("data/leader", 0755)
+	_ = saveLeaderLogToFile("data/leader/committed.json", committed)
+	_ = saveLeaderLogToFile("data/leader/uncommitted.json", uncommitted)
+}
+
+func (l *LeaderServer) loadLogs() {
+	_ = os.MkdirAll("data/leader", 0755)
+	committed, _ := loadLeaderLogFromFile("data/leader/committed.json")
+	uncommitted, _ := loadLeaderLogFromFile("data/leader/uncommitted.json")
+	l.log = append(committed, uncommitted...)
+}
+
 func main() {
 	// List of replica addresses (update as needed)
 	replicaAddrs := []string{
@@ -144,6 +191,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	leader := &LeaderServer{replicas: replicas, epoch: 0}
+	leader.loadLogs()
 	pb.RegisterLeaderServer(grpcServer, leader)
 	log.Fatal(grpcServer.Serve(lis))
 }
