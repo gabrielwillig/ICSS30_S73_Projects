@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	"data-replication/common"
 	"data-replication/pb"
 
 	"google.golang.org/grpc"
@@ -26,7 +27,7 @@ type LeaderServer struct {
 }
 
 func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.WriteResponse, error) {
-	log.Println("Received write request:", req.Data)
+	common.Info("Received write request: %v", req.Data)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -42,7 +43,7 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 
 	acks := l.replicateToQuorum(ctx, entry)
 	if acks < QUORUM {
-		log.Printf("Failed to achieve replication quorum: %d/%d", acks, QUORUM)
+		common.Error("Failed to achieve replication quorum: %d/%d", acks, QUORUM)
 		l.log = l.log[:len(l.log)-1]
 		l.persistLogs()
 		return &pb.WriteResponse{Status: "failed quorum"}, nil
@@ -50,7 +51,7 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 
 	commitAcks := l.commitToQuorum(ctx, entry)
 	if commitAcks < QUORUM {
-		log.Printf("Failed to achieve commit quorum: %d/%d", commitAcks, QUORUM)
+		common.Error("Failed to achieve commit quorum: %d/%d", commitAcks, QUORUM)
 		l.log = l.log[:len(l.log)-1]
 		l.persistLogs()
 		return &pb.WriteResponse{Status: "failed quorum"}, nil
@@ -58,7 +59,7 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 
 	l.log[entry.Offset].Committed = true
 	l.persistLogs()
-	log.Printf("Committed entry: %+v", entry)
+	common.Info("Committed entry: %+v", entry)
 
 	return &pb.WriteResponse{Status: "committed"}, nil
 }
@@ -77,9 +78,9 @@ func (l *LeaderServer) replicateToQuorum(ctx context.Context, entry *pb.LogEntry
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-				log.Printf("✅ Successful requested replication | Replica: %v | Entry: %v", replicaNum, entry)
+				common.Info("✅ Successful requested replication | Replica: %v | Entry: %v", replicaNum, entry)
 			} else {
-				log.Printf("❌ Failed requesting replication | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
+				common.Error("❌ Failed requesting replication | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
 			}
 		}(replica)
 	}
@@ -105,9 +106,9 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-				log.Printf("✅ Successful committed | Replica: %v | Entry: %v", replicaNum, entry)
+				common.Info("✅ Successful committed | Replica: %v | Entry: %v", replicaNum, entry)
 			} else {
-				log.Printf("❌ Failed to commit | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
+				common.Error("❌ Failed to commit | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
 			}
 		}(replica)
 	}

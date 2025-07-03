@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 
+	"data-replication/common"
 	"data-replication/pb"
 
 	"google.golang.org/grpc"
@@ -64,16 +65,16 @@ func (r *ReplicaServer) loadLogs() {
 }
 
 func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*pb.Ack, error) {
-	log.Println("Received log entry:", entry)
+	common.Info("Received log entry: %v", entry)
 
 	if int(entry.Epoch) < r.epoch {
-		log.Println("Received stale epoch, ignoring entry")
+		common.Warn("Received stale epoch, ignoring entry")
 		return &pb.Ack{Success: false, Message: "stale epoch"}, nil
 	}
 
 	// Handle uncommitted entries
 	if len(r.log) > 0 && !r.log[len(r.log)-1].Committed {
-		log.Println("Uncommitted logs detected")
+		common.Warn("Uncommitted logs detected")
 
 		var lastCommitedEntry int32
 
@@ -81,7 +82,7 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 		for i := len(r.log) - 1; i >= 0; i-- {
 			if r.log[i].Committed {
 				r.log = r.log[:i+1]
-				log.Printf("Truncated log to last committed entry at offset %d", i)
+				common.Warn("Truncated log to last committed entry at offset %d", i)
 				lastCommitedEntry = r.log[i].Offset
 				r.persistLogs()
 				break
@@ -89,7 +90,7 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 
 			if i == 0 {
 				// If no committed entry found, reset log
-				log.Println("No committed entries found, resetting log")
+				common.Error("No committed entries found, resetting log")
 				r.log = []*pb.LogEntry{}
 				lastCommitedEntry = -1
 				r.persistLogs()
@@ -97,6 +98,7 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 		}
 
 		if entry.Offset != lastCommitedEntry+1 {
+			common.Warn("Offset mismatch, starting background sync from %d", lastCommitedEntry+1)
 			offsetToRequest := lastCommitedEntry + 1
 			r.startBackgroundSync(offsetToRequest)
 		}
@@ -107,18 +109,18 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 
 	// Handle offset mismatch (conflict)
 	if int(entry.Offset) != len(r.log) {
-		log.Printf("Conflict detected: Expected offset %d, got %d", len(r.log), entry.Offset)
+		common.Warn("Conflict detected: Expected offset %d, got %d", len(r.log), entry.Offset)
 
 		if int(entry.Offset) < len(r.log) {
 			// If the replica is ahead the leader's log, truncate the replica log
-			log.Printf("Replica log is ahead of leader's log")
+			common.Warn("Replica log is ahead of leader's log")
 
 			r.log = r.log[:entry.Offset]
-			log.Printf("Truncated log to offset %d", entry.Offset)
+			common.Warn("Truncated log to offset %d", entry.Offset)
 			r.persistLogs()
 		} else {
 			// If the replica's log is behind the leader's log, start a background sync
-			log.Printf("Replica log is behind leader's log")
+			common.Warn("Replica log is behind leader's log")
 
 			offsetToRequest := int32(len(r.log))
 			r.startBackgroundSync(offsetToRequest)
@@ -131,7 +133,7 @@ func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*
 	r.epoch = int(entry.Epoch)
 	r.log = append(r.log, entry)
 	r.persistLogs()
-	log.Printf("Saved intermediary log entry: %+v", entry)
+	common.Info("Saved intermediary log entry: %+v", entry)
 
 	return &pb.Ack{Success: true, Message: "ok"}, nil
 }
@@ -140,11 +142,11 @@ func (r *ReplicaServer) Commit(ctx context.Context, commit *pb.CommitRequest) (*
 	if int(commit.Offset) < len(r.log) {
 		r.log[commit.Offset].Committed = true
 		r.persistLogs()
-		log.Printf("Committed entry at offset %d: %+v", commit.Offset, r.log[commit.Offset])
+		common.Info("Committed entry at offset %d: %+v", commit.Offset, r.log[commit.Offset])
 		return &pb.Ack{Success: true, Message: "committed"}, nil
 	}
 
-	log.Printf("Commit failed: Offset %d not found in log", commit.Offset)
+	common.Error("Commit failed: Offset %d not found in log", commit.Offset)
 	return &pb.Ack{Success: false, Message: "not found"}, nil
 }
 
@@ -153,6 +155,7 @@ func (r *ReplicaServer) syncWithLeader(ctx context.Context, fromOffset int32) er
 	req := &pb.ReadRequest{Offset: fromOffset}
 	resp, err := r.leaderClient.Read(ctx, req)
 	if err != nil {
+		common.Error("SyncWithLeader failed: %v", err)
 		return err
 	}
 
@@ -160,20 +163,20 @@ func (r *ReplicaServer) syncWithLeader(ctx context.Context, fromOffset int32) er
 		// Append missing logs from leader
 		r.log = append(r.log, entry)
 		r.persistLogs()
-		log.Printf("Synced log entry from leader: %v", entry)
+		common.Info("Synced log entry from leader: %v", entry)
 	}
 
-	log.Printf("Synced %d entries from leader starting at offset %d", len(resp.Entries), fromOffset)
+	common.Info("Synced %d entries from leader starting at offset %d", len(resp.Entries), fromOffset)
 	return nil
 }
 
 func (r *ReplicaServer) startBackgroundSync(offset int32) {
 	go func() {
-		log.Printf("Starting background sync from offset %d", offset)
+		common.Info("Starting background sync from offset %d", offset)
 		if err := r.syncWithLeader(context.Background(), offset); err != nil {
-			log.Printf("Background sync failed: %v", err)
+			common.Error("Background sync failed: %v", err)
 		} else {
-			log.Printf("Background sync succeeded")
+			common.Info("Background sync succeeded")
 		}
 	}()
 }
@@ -204,7 +207,7 @@ func main() {
 	pb.RegisterReplicaServer(grpcServer, replica)
 
 	lis, _ := net.Listen("tcp", addr)
-	log.Printf("Replica %d listening on %s", replicaNum, addr)
+	common.Info("Replica %d listening on %s", replicaNum, addr)
 
 	log.Fatal(grpcServer.Serve(lis))
 }
