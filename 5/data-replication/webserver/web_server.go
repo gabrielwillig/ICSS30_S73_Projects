@@ -29,7 +29,7 @@ var leaderClient pb.LeaderClient
 
 func readDataFiles() ([]FileData, error) {
 	var files []FileData
-	root := "../data"
+	root := "./data"
 	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
