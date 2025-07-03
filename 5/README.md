@@ -17,6 +17,9 @@ protoc -I=proto --go_out=pb --go_opt=paths=source_relative --go-grpc_out=pb --go
 # Run
 Start in the following order:
 
+## Web Server
+go run ./webserver
+
 ## leader
 go run ./leader/
 
