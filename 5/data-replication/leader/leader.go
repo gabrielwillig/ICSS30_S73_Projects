@@ -189,6 +189,7 @@ func main() {
 	}
 
 	lis, _ := net.Listen("tcp", ":50051")
+	common.Info("Leader server listening on :50051")
 
 	grpcServer := grpc.NewServer()
 	leader := &LeaderServer{replicas: replicas, epoch: 0}
