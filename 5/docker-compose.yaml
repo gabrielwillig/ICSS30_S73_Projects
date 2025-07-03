@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: data-replication:latest
     container_name:  data-replication
     volumes:
       - ./data-replication:/data-replication
@@ -10,6 +11,8 @@ services:
     environment:
       - GO111MODULE=on
       - GOCACHE=/tmp/.cache
+    ports:
+      - "8080:8080"
     command: ["/bin/bash"]
     stdin_open: true
     tty: true

@@ -18,17 +18,17 @@ protoc -I=proto --go_out=pb --go_opt=paths=source_relative --go-grpc_out=pb --go
 Start in the following order:
 
 ## Web Server
-go run ./webserver
+The web server show everything and also is the client
+
+> go run ./webserver
 
 ## leader
-go run ./leader/
+> go run ./leader/
 
 ## replicas
-go run ./replica/ 1
-go run ./replica/ 2
-go run ./replica/ 3
+> go run ./replica/ 1
+> go run ./replica/ 2
+> go run ./replica/ 3
 
-## client
-The client just send "Hello" message and exit. For testing purposes is ok but will be an upgrade make the client alway active and receiving data to write from terminal
-
-go run ./client/
+## Observations
+- The server usually don't have entries on it's uncommitted file since it trucates immediatelly when the process fails in the commit phase, in contrast with replicas that usually cannot determine when it fails, just when they receive another entry

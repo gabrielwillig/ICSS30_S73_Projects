@@ -27,5 +27,30 @@ async function fetchFiles() {
   renderQuadrant('replica3', r3);
 }
 
+async function writeData() {
+  const input = document.getElementById('write-input');
+  const value = input.value.trim();
+  if (!value) return;
+  await fetch('/api/write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: value })
+  });
+  input.value = '';
+  fetchFiles();
+}
+
+async function readFromOffset() {
+  const input = document.getElementById('offset-input');
+  const value = input.value.trim();
+  const res = await fetch('/api/read?offset=' + encodeURIComponent(value));
+  const data = await res.json();
+  const el = document.getElementById('read-result');
+  el.innerHTML = '<pre>' + JSON.stringify(data.entries, null, 2) + '</pre>';
+}
+
 fetchFiles();
 setInterval(fetchFiles, 2000);
+
+window.writeData = writeData;
+window.readFromOffset = readFromOffset;

@@ -10,10 +10,25 @@
     .quadrant { background: #333; padding: 1em; border-radius: 8px; overflow-y: auto; height: 300px; }
     .qtitle { font-weight: bold; margin-bottom: 0.5em; }
     pre { background: #222; color: #bfb; padding: 0.5em; border-radius: 4px; }
+    .panel { background: #222; border-radius: 8px; padding: 1em; margin-bottom: 1em; }
+    .panel label { margin-right: 0.5em; }
+    .panel input[type=text] { width: 200px; }
+    .panel button { margin-left: 0.5em; }
   </style>
 </head>
 <body>
   <h1>Data Folder Viewer</h1>
+  <div class="panel">
+    <label for="write-input">Write data:</label>
+    <input id="write-input" type="text" placeholder="Enter data...">
+    <button onclick="writeData()">Send</button>
+  </div>
+  <div class="panel">
+    <label for="offset-input">Read from offset:</label>
+    <input id="offset-input" type="text" placeholder="0">
+    <button onclick="readFromOffset()">Read</button>
+    <div id="read-result"></div>
+  </div>
   <div id="grid">
     <div class="quadrant" id="leader">
       <div class="qtitle">Leader</div>

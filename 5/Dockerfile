@@ -18,12 +18,12 @@ RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PR
  && mv protoc3/include/* /usr/local/include/ \
  && rm -rf protoc-${PROTOC_VERSION}-linux-x86_64.zip protoc3
 
+ # Switch to non-root user
+ USER appuser
+
 # Set up Go environment
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
     go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-
-# Switch to non-root user
-USER appuser
 
 # Default command to print versions (just to test)
 CMD ["bash", "-c", "go version && protoc --version"]
