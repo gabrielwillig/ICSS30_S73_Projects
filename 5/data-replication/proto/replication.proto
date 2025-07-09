@@ -9,11 +9,20 @@ option go_package = "data-replication/pb;pb";
 service Leader {
   rpc Write(WriteRequest) returns (WriteResponse);
   rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
 }
 
 service Replica {
   rpc ReplicateLog(LogEntry) returns (Ack);
   rpc Commit(CommitRequest) returns (Ack);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message HealthRequest {
+}
+
+message HealthResponse {
+  bool healthy = 1;
 }
 
 message WriteRequest {

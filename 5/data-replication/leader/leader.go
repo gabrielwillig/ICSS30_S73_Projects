@@ -27,6 +27,11 @@ type LeaderServer struct {
 	replicas []pb.ReplicaClient
 }
 
+// Health implements the gRPC health check for the Leader service
+func (l *LeaderServer) Health(ctx context.Context, req *pb.HealthRequest) (*pb.HealthResponse, error) {
+	return &pb.HealthResponse{Healthy: true}, nil
+}
+
 func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.WriteResponse, error) {
 	common.Info("[LEADER] Received WRITE request: data='%v'", req.Data)
 

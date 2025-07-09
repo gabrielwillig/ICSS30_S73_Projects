@@ -94,6 +94,47 @@ func readHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// checkHealthHandler checks if a peer (leader or replica) is up by attempting a gRPC connection and a simple call
+func checkHealthHandler(w http.ResponseWriter, r *http.Request) {
+	peer := r.URL.Query().Get("peer")
+	// Map peer name to address
+	peerMap := map[string]string{
+		"leader":    "localhost:50040",
+		"replica_1": "localhost:50051",
+		"replica_2": "localhost:50052",
+		"replica_3": "localhost:50053",
+	}
+	addr, ok := peerMap[peer]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"healthy": false, "error": "unknown peer"})
+		return
+	}
+
+	healthy := false
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err == nil {
+		var healthyResp bool
+		switch peer {
+		case "leader":
+			client := pb.NewLeaderClient(conn)
+			resp, err2 := client.Health(ctx, &pb.HealthRequest{})
+			healthyResp = (err2 == nil && resp.GetHealthy())
+		case "replica_1", "replica_2", "replica_3":
+			client := pb.NewReplicaClient(conn)
+			resp, err2 := client.Health(ctx, &pb.HealthRequest{})
+			healthyResp = (err2 == nil && resp.GetHealthy())
+		}
+		if healthyResp {
+			healthy = true
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"healthy": healthy})
+}
+
 func main() {
 	conn, _ := grpc.NewClient("localhost:50040", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	leaderClient = pb.NewLeaderClient(conn)
@@ -101,6 +142,7 @@ func main() {
 	http.HandleFunc("/api/files", filesHandler)
 	http.HandleFunc("/api/write", writeHandler)
 	http.HandleFunc("/api/read", readHandler)
+	http.HandleFunc("/api/health", checkHealthHandler)
 
 	http.Handle("/", http.FileServer(http.Dir("./webserver/static")))
 

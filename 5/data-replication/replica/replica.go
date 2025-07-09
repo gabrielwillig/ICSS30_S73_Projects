@@ -25,6 +25,11 @@ type ReplicaServer struct {
 	dir          string // directory for this replica's files
 }
 
+// Health implements the gRPC health check for the Replica service
+func (r *ReplicaServer) Health(ctx context.Context, req *pb.HealthRequest) (*pb.HealthResponse, error) {
+	return &pb.HealthResponse{Healthy: true}, nil
+}
+
 func saveLogToFile(filename string, logEntries []*pb.LogEntry) error {
 	data, err := json.MarshalIndent(logEntries, "", "  ")
 	if err != nil {
