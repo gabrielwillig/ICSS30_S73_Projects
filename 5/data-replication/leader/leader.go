@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -27,10 +28,13 @@ type LeaderServer struct {
 }
 
 func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.WriteResponse, error) {
-	common.Info("Received write request: %v", req.Data)
+	common.Info("[LEADER] Received WRITE request: data='%v'", req.Data)
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	// Always reload logs from disk before processing write
+	l.syncInMemoryWithDisk()
 
 	entry := &pb.LogEntry{
 		Epoch:     int32(l.epoch),
@@ -40,26 +44,31 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 	}
 	l.log = append(l.log, entry)
 	l.persistLogs()
+	common.Info("[LEADER] Appended uncommitted log entry: offset=%d, data='%v'", entry.Offset, entry.Data)
 
 	acks := l.replicateToQuorum(ctx, entry)
 	if acks < QUORUM {
-		common.Error("Failed to achieve replication quorum: %d/%d", acks, QUORUM)
+		common.Error("[LEADER] Replication quorum FAILED: %d/%d", acks, QUORUM)
 		l.log = l.log[:len(l.log)-1]
 		l.persistLogs()
 		return &pb.WriteResponse{Status: "failed quorum"}, nil
 	}
+
+	common.Info("[LEADER] Replication quorum achieved: %d/%d", acks, QUORUM)
 
 	commitAcks := l.commitToQuorum(ctx, entry)
 	if commitAcks < QUORUM {
-		common.Error("Failed to achieve commit quorum: %d/%d", commitAcks, QUORUM)
+		common.Error("[LEADER] Commit quorum FAILED: %d/%d", commitAcks, QUORUM)
 		l.log = l.log[:len(l.log)-1]
 		l.persistLogs()
 		return &pb.WriteResponse{Status: "failed quorum"}, nil
 	}
 
+	common.Info("[LEADER] Commit quorum achieved: %d/%d", commitAcks, QUORUM)
+
 	l.log[entry.Offset].Committed = true
 	l.persistLogs() // Move from uncommitted to committed
-	common.Info("Committed entry: %+v", entry)
+	common.Info("[LEADER] Entry COMMITTED: offset=%d, data='%v'", entry.Offset, entry.Data)
 
 	return &pb.WriteResponse{Status: "committed"}, nil
 }
@@ -71,18 +80,18 @@ func (l *LeaderServer) replicateToQuorum(ctx context.Context, entry *pb.LogEntry
 
 	for replicaNum, replica := range l.replicas {
 		wg.Add(1)
-		go func(r pb.ReplicaClient) {
+		go func(idx int, r pb.ReplicaClient) {
 			defer wg.Done()
 			ack, err := r.ReplicateLog(ctx, entry)
 			if err == nil && ack.Success {
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-				common.Info("✅ Successful requested replication | Replica: %v | Entry: %v", replicaNum, entry)
+				common.Info("[LEADER] Replication to replica %d succeeded: offset=%d", idx, entry.Offset)
 			} else {
-				common.Error("❌ Failed requesting replication | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
+				common.Error("[LEADER] Replication to replica %d FAILED: offset=%d, err=%v", idx, entry.Offset, err)
 			}
-		}(replica)
+		}(replicaNum, replica)
 	}
 
 	wg.Wait()
@@ -96,7 +105,7 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 
 	for replicaNum, replica := range l.replicas {
 		wg.Add(1)
-		go func(r pb.ReplicaClient) {
+		go func(idx int, r pb.ReplicaClient) {
 			defer wg.Done()
 			ack, err := r.Commit(ctx, &pb.CommitRequest{
 				Epoch:  entry.Epoch,
@@ -106,11 +115,11 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 				ackMu.Lock()
 				acks++
 				ackMu.Unlock()
-				common.Info("✅ Successful committed | Replica: %v | Entry: %v", replicaNum, entry)
+				common.Info("[LEADER] Commit to replica %d succeeded: offset=%d", idx, entry.Offset)
 			} else {
-				common.Error("❌ Failed to commit | Replica: %v | Err: %v | Entry: %v", replicaNum, err, entry)
+				common.Error("[LEADER] Commit to replica %d FAILED: offset=%d, err=%v", idx, entry.Offset, err)
 			}
-		}(replica)
+		}(replicaNum, replica)
 	}
 
 	wg.Wait()
@@ -119,16 +128,35 @@ func (l *LeaderServer) commitToQuorum(ctx context.Context, entry *pb.LogEntry) i
 
 // Read only committed entries and sends them back to the client
 func (l *LeaderServer) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadResponse, error) {
-	var committed []*pb.LogEntry
+	// Always reload logs from disk before processing read
+	l.syncInMemoryWithDisk()
 
+	// Check for uncommitted entries
+	for _, entry := range l.log {
+		if !entry.Committed {
+			common.Warn("[LEADER] Read request denied: uncommitted entries present in log")
+			return nil, fmt.Errorf("read denied: uncommitted entries present in log")
+		}
+	}
+
+	common.Info("[LEADER] Received READ request from offset=%v", req.Offset)
+
+	var committed []*pb.LogEntry
 	for i := int(req.Offset); i < len(l.log); i++ {
 		e := l.log[i]
 		if e.Committed {
 			committed = append(committed, e)
 		}
 	}
-
+	common.Info("[LEADER] Returning %d committed entries", len(committed))
 	return &pb.ReadResponse{Entries: committed}, nil
+}
+
+// Reloads the in-memory log from disk (committed + uncommitted)
+func (l *LeaderServer) syncInMemoryWithDisk() {
+	committed, _ := loadLeaderLogFromFile("data/leader/committed.json")
+	uncommitted, _ := loadLeaderLogFromFile("data/leader/uncommitted.json")
+	l.log = append(committed, uncommitted...)
 }
 
 func saveLeaderLogToFile(filename string, logEntries []*pb.LogEntry) error {
