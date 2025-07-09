@@ -95,7 +95,7 @@ func readHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, _ := grpc.NewClient("localhost:50040", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	leaderClient = pb.NewLeaderClient(conn)
 
 	http.HandleFunc("/api/files", filesHandler)

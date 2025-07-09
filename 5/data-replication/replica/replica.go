@@ -64,7 +64,14 @@ func (r *ReplicaServer) loadLogs() {
 	r.log = append(committed, uncommitted...)
 }
 
+func (r *ReplicaServer) syncInMemoryWithDisk() {
+	committed, _ := loadLogFromFile(r.dir + "/committed.json")
+	uncommitted, _ := loadLogFromFile(r.dir + "/uncommitted.json")
+	r.log = append(committed, uncommitted...)
+}
+
 func (r *ReplicaServer) ReplicateLog(ctx context.Context, entry *pb.LogEntry) (*pb.Ack, error) {
+	r.syncInMemoryWithDisk() // Always reload from disk before any operation
 	common.Info("Received log entry: %v", entry)
 
 	if int(entry.Epoch) < r.epoch {
@@ -189,12 +196,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Invalid replica number: %v", err)
 	}
-	port := 50051 + replicaNum
+	port := 50050 + replicaNum
 	addr := ":" + strconv.Itoa(port)
-	dir := "data/replica_" + strconv.Itoa(replicaNum)
+	dir := "./data/replica_" + strconv.Itoa(replicaNum)
 
 	// Connect to the leader
-	leaderAddr := "localhost:50051"
+	leaderAddr := "localhost:50040"
 	conn, err := grpc.NewClient(leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to leader: %v", err)

@@ -58,7 +58,7 @@ func (l *LeaderServer) Write(ctx context.Context, req *pb.WriteRequest) (*pb.Wri
 	}
 
 	l.log[entry.Offset].Committed = true
-	l.persistLogs()
+	l.persistLogs() // Move from uncommitted to committed
 	common.Info("Committed entry: %+v", entry)
 
 	return &pb.WriteResponse{Status: "committed"}, nil
@@ -175,9 +175,9 @@ func (l *LeaderServer) loadLogs() {
 func main() {
 	// List of replica addresses (update as needed)
 	replicaAddrs := []string{
+		"localhost:50051",
 		"localhost:50052",
 		"localhost:50053",
-		"localhost:50054",
 	}
 	var replicas []pb.ReplicaClient
 	for _, addr := range replicaAddrs {
@@ -188,8 +188,8 @@ func main() {
 		replicas = append(replicas, pb.NewReplicaClient(conn))
 	}
 
-	lis, _ := net.Listen("tcp", ":50051")
-	common.Info("Leader server listening on :50051")
+	lis, _ := net.Listen("tcp", ":50040")
+	common.Info("Leader server listening on :50040")
 
 	grpcServer := grpc.NewServer()
 	leader := &LeaderServer{replicas: replicas, epoch: 0}
